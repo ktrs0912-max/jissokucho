@@ -1,7 +1,7 @@
 // 電波のない現場でも開けるように、アプリ本体とPDF部品をスマホに保存しておく
-const CACHE = 'jissokucho-v21';
+const CACHE = 'jissokucho-v22';
 const FILES = [
-  './', 'index.html', 'style.css', 'store.js', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',
+  './', 'index.html', 'style.css', 'store.js', 'annot.js', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',

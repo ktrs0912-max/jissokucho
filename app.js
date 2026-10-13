@@ -199,75 +199,34 @@ $('#sizeBtn').onclick = () => {
 };
 renderSizeBtn();
 
-/* ---------- お絵描き（図面のページごとに保存） ---------- */
-// 線は図面の幅を1とした割合で記録するので、拡大しても画像に書き出しても同じ位置・太さになる
-const PEN_W = { 細: 0.0018, 太: 0.0045 };
-let penColor = '#d7261e', penW = '細', curStroke = null;
+/* ---------- お絵描き（図面のページごとに保存。道具の中身は annot.js） ---------- */
 S.pen = false;
-const strokeD = (st, W, H) => { const pts = st.pts.length === 1 ? [st.pts[0], st.pts[0]] : st.pts; return pts.map((p, i) => (i ? 'L' : 'M') + (p[0] * W).toFixed(1) + ' ' + (p[1] * H).toFixed(1)).join(''); };
-const strokeSvg = (st, id) => `<path${id ? ` id="${id}"` : ''} d="${strokeD(st, V.w, V.h)}" fill="none" stroke="${st.c}" stroke-width="${st.w * V.w}" stroke-linecap="round" stroke-linejoin="round"/>`;
-// 文字も同じ一覧に { t:'text', x, y, s, c, f } として入れる（x,y,f は図面の幅に対する割合）
-const TEXT_F = { 細: 0.012, 太: 0.02 };
-const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
-const textSvg = it => `<text x="${it.x * V.w}" y="${it.y * V.h}" font-size="${it.f * V.w}" font-weight="700" fill="${it.c}" stroke="#fff" stroke-width="${it.f * V.w * 0.18}" paint-order="stroke" dominant-baseline="middle" font-family="sans-serif">${esc(it.s)}</text>`;
-const itemSvg = it => it.t === 'text' ? textSvg(it) : strokeSvg(it);
-// 線を引きながら0.5秒止めると、始点からの直線に変わる。水平・垂直から15°以内ならピタッと合わせる
-const STRAIGHT_MS = 500, SNAP_DEG = 15;
-function snapEnd(a, b) {
-  const dx = (b[0] - a[0]) * V.w, dy = (b[1] - a[1]) * V.h, t = Math.tan(SNAP_DEG * Math.PI / 180);
-  if (Math.abs(dy) <= Math.abs(dx) * t) return [b[0], a[1]];
-  if (Math.abs(dx) <= Math.abs(dy) * t) return [a[0], b[1]];
-  return b;
-}
-function armStraight() {
-  if (!gest || gest.type !== 'pen') return;
-  clearTimeout(gest.timer);
-  const g = gest;
-  g.timer = setTimeout(() => {
-    if (gest !== g || !curStroke || curStroke.pts.length < 2) return;
-    const a = curStroke.pts[0], b = curStroke.pts[curStroke.pts.length - 1];
-    if (Math.hypot((b[0] - a[0]) * V.w, (b[1] - a[1]) * V.h) * V.s < 15) return; // 短すぎる線はそのまま
-    g.straight = true;
-    curStroke.pts = [a, snapEnd(a, b)];
-    const el = document.getElementById('curStroke'); if (el) el.setAttribute('d', strokeD(curStroke, V.w, V.h));
-    try { navigator.vibrate?.(15); } catch (e) {}
-  }, STRAIGHT_MS);
-}
 function drawStrokes(g, d, page, W, H) { drawItems(g, d.sketch?.[page] || [], W, H); }
-function drawItems(g, items, W, H) {
-  items.forEach(st => {
-    if (st.t === 'text') {
-      g.font = `700 ${st.f * W}px sans-serif`; g.textAlign = 'left'; g.textBaseline = 'middle';
-      g.lineWidth = st.f * W * 0.18; g.strokeStyle = '#fff'; g.lineJoin = 'round'; g.strokeText(st.s, st.x * W, st.y * H);
-      g.fillStyle = st.c; g.fillText(st.s, st.x * W, st.y * H); return;
-    }
-    const pts = st.pts.length === 1 ? [st.pts[0], st.pts[0]] : st.pts;
-    g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0] * W, p[1] * H) : g.moveTo(p[0] * W, p[1] * H));
-    g.strokeStyle = st.c; g.lineWidth = st.w * W; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke();
-  });
-}
+const drawAnnot = new Annotator({
+  items: () => ((S.drawing.sketch ??= {})[S.page] ??= []),
+  peek: () => S.drawing?.sketch?.[S.page] || [],
+  save: () => saveSite(),
+  render: () => drawMarks(),
+  size: () => ({ W: V.w || 1, H: V.h || 1 }),
+  k: () => V.s,
+  textF: 1,
+  bar: $('#penBar'),
+  extra: [{ label: '全部消す', run: async () => {
+    const list = S.drawing?.sketch?.[S.page];
+    if (!list?.length) { toast('消すものがありません'); return; }
+    if (!await ask(`このページに書いた線・文字（${list.length}個）を全部消します。元に戻せません。`)) return;
+    S.drawing.sketch[S.page] = []; drawAnnot.clearSel(); saveSite(); drawMarks(); toast('全部消しました');
+  } }],
+});
 function setPen(on) {
-  S.pen = on; curStroke = null;
+  S.pen = on; drawAnnot.clearSel();
   const b = $('#penBtn'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
   $('#penBar').hidden = !on; stage.classList.toggle('pen', on);
-  toast(on ? '指でなぞると線が引けます。図面を動かすときは2本指' : '書くのをやめました');
+  drawMarks();
+  toast(on ? '書くモード。図面を動かすときは2本指' : '書くのをやめました');
 }
 $('#penBtn').onclick = () => setPen(!S.pen);
-document.querySelectorAll('#penBar .pc').forEach(b => b.onclick = () => {
-  penColor = b.dataset.c; document.querySelectorAll('#penBar .pc').forEach(x => x.classList.toggle('on', x === b));
-});
-$('#penWBtn').onclick = () => { penW = penW === '細' ? '太' : '細'; $('#penWBtn').textContent = `${penText ? '文字' : '線'}：${penW === '細' ? (penText ? '小' : '細') : (penText ? '大' : '太')}`; };
-let penText = false;
-$('#penTextBtn').onclick = () => {
-  setPenText(!penText);
-  toast(penText ? '文字を置きたい所をタップしてください。置いた文字をタップすると直せます' : '線を引くモードに戻りました');
-};
-$('#penUndo').onclick = () => {
-  const list = S.drawing?.sketch?.[S.page];
-  if (!list?.length) { toast('消すものがありません'); return; }
-  list.pop(); saveSite(); drawMarks();
-};
-// 文字の置き場所・直す文字をタップで決める（図面と写真で同じ入力画面を使う）
+// 文字の入力画面（図面と写真で共用）
 let textTarget = null;
 function showTextDlg(edit, onSave, onDelete, after) {
   textTarget = { edit, onSave, onDelete, after };
@@ -276,27 +235,6 @@ function showTextDlg(edit, onSave, onDelete, after) {
   $('#textOk').textContent = edit ? '直す' : '置く';
   $('#textDel').hidden = !edit;
   $('#textDlg').showModal(); $('#textIn').focus();
-}
-function hitText(cx, cy) {
-  const p = toLayer(cx, cy), list = S.drawing?.sketch?.[S.page] || [];
-  const g = document.createElement('canvas').getContext('2d');
-  for (let i = list.length - 1; i >= 0; i--) {
-    const it = list[i]; if (it.t !== 'text') continue;
-    const fs = it.f * V.w; g.font = `700 ${fs}px sans-serif`;
-    const x = it.x * V.w, y = it.y * V.h, w = g.measureText(it.s).width, pad = 8 / V.s;
-    if (p.x >= x - pad && p.x <= x + w + pad && p.y >= y - fs / 2 - pad && p.y <= y + fs / 2 + pad) return it;
-  }
-  return null;
-}
-function openTextDlg(cx, cy) {
-  const edit = hitText(cx, cy), p = toLayer(cx, cy);
-  if (!edit && (p.x < 0 || p.y < 0 || p.x > V.w || p.y > V.h)) return;
-  const at = { x: Math.round(p.x / V.w * 1e4) / 1e4, y: Math.round(p.y / V.h * 1e4) / 1e4 };
-  const list = () => ((S.drawing.sketch ??= {})[S.page] ??= []);
-  showTextDlg(edit,
-    s => { if (edit) { edit.s = s; edit.c = penColor; } else list().push({ t: 'text', ...at, s, c: penColor, f: TEXT_F[penW] }); saveSite(); drawMarks(); },
-    () => { const l = list(), i = l.indexOf(edit); if (i >= 0) l.splice(i, 1); saveSite(); drawMarks(); toast('文字を消しました'); },
-    () => setPenText(false));
 }
 $('#textForm').onsubmit = e => {
   e.preventDefault();
@@ -308,23 +246,10 @@ $('#textForm').onsubmit = e => {
 $('#textDel').onclick = () => { $('#textDlg').close(); if (textTarget?.edit) textTarget.onDelete(); textTarget?.after?.(); };
 $('#textCancel').onclick = () => { $('#textDlg').close(); textTarget?.after?.(); };
 $('#textDlg').addEventListener('cancel', () => textTarget?.after?.()); // 戻るボタンで閉じた時
-// 文字を1つ置いたら（やめた時も）自動で「線を引く」に戻す
-function setPenText(on) {
-  penText = on;
-  const b = $('#penTextBtn'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
-  $('#penWBtn').textContent = `${on ? '文字' : '線'}：${penW === '細' ? (on ? '小' : '細') : (on ? '大' : '太')}`;
-}
-function setPhText(on) { PH.text = on; $('#phText').classList.toggle('on', on); $('#phText').setAttribute('aria-pressed', on); $('#phW').textContent = phWLabel(); }
-$('#penClear').onclick = async () => {
-  const list = S.drawing?.sketch?.[S.page];
-  if (!list?.length) { toast('消す線がありません'); return; }
-  if (!await ask(`このページに書いた線（${list.length}本）を全部消します。元に戻せません。`)) return;
-  S.drawing.sketch[S.page] = []; saveSite(); drawMarks(); toast('線を全部消しました');
-};
 
 function drawMarks() {
   const k = sizeK(), r = 9 * k / V.s, fs = 10 * k / V.s, sw = 1.5 * Math.max(0.7, k) / V.s;
-  let h = (S.drawing?.sketch?.[S.page] || []).map(itemSvg).join('') + (curStroke ? strokeSvg(curStroke, 'curStroke') : '');
+  let h = S.drawing ? drawAnnot.svg() : '';
   S.positions.filter(p => p.page === S.page).forEach(p => {
     const active = S.pos && p.id === S.pos.id;
     p.points.forEach((pt, i) => {
@@ -344,6 +269,7 @@ function drawMarks() {
 const ptrs = new Map();
 let gest = null;
 const toLayer = (cx, cy) => { const r = stage.getBoundingClientRect(); return { x: (cx - r.left - V.x) / V.s, y: (cy - r.top - V.y) / V.s }; };
+const annotPos = e => { const p = toLayer(e.clientX, e.clientY); return [p.x / V.w, p.y / V.h]; };
 function hitPoint(cx, cy) {
   if (!S.pos || S.pos.page !== S.page) return null;
   const p = toLayer(cx, cy), lim = 22 / V.s;
@@ -355,16 +281,10 @@ stage.addEventListener('pointerdown', e => {
   if (e.target.closest('.tools')) return;
   try { stage.setPointerCapture(e.pointerId); } catch (err) {}
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (S.pen && penText && ptrs.size === 1) { // 文字モード：タップした所に文字
-    gest = { type: 'pentap', sx: e.clientX, sy: e.clientY, moved: false }; return;
+  if (S.pen && ptrs.size === 1) { // 書くモード：1本指は書き込みの道具に渡す
+    drawAnnot.down(annotPos(e), e); gest = { type: 'annot' }; return;
   }
-  if (S.pen && ptrs.size === 1) { // 書くモード：1本指で線を引き始める
-    const p = toLayer(e.clientX, e.clientY);
-    curStroke = { c: penColor, w: PEN_W[penW], pts: [[p.x / V.w, p.y / V.h]] };
-    gest = { type: 'pen', ax: e.clientX, ay: e.clientY, straight: false };
-    armStraight(); drawMarks(); return;
-  }
-  if (gest?.type === 'pen') { clearTimeout(gest.timer); curStroke = null; drawMarks(); } // 2本目の指が来たら線はやめて拡大・移動へ
+  if (gest?.type === 'annot') { drawAnnot.cancel(); drawMarks(); } // 2本目の指が来たら書き込みはやめて拡大・移動へ
   if (ptrs.size === 1) {
     const hit = hitPoint(e.clientX, e.clientY);
     gest = { type: 'one', sx: e.clientX, sy: e.clientY, vx: V.x, vy: V.y, t: Date.now(), moved: false, hit, drag: hit && !S.addMode };
@@ -376,23 +296,7 @@ stage.addEventListener('pointerdown', e => {
 stage.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId) || !gest) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (gest.type === 'pentap') { if (Math.hypot(e.clientX - gest.sx, e.clientY - gest.sy) > 12) gest.moved = true; return; }
-  if (gest.type === 'pen') {
-    if (!curStroke) return;
-    const p = toLayer(e.clientX, e.clientY), last = curStroke.pts[curStroke.pts.length - 1];
-    const nx = p.x / V.w, ny = p.y / V.h;
-    // 指が6px以上動いたら「止まっている時間」を数え直す
-    if (Math.hypot(e.clientX - gest.ax, e.clientY - gest.ay) > 6) { gest.ax = e.clientX; gest.ay = e.clientY; if (!gest.straight) armStraight(); }
-    if (gest.straight) { // まっすぐモード中は、始点から指までの直線（水平・垂直に吸い付く）
-      curStroke.pts = [curStroke.pts[0], snapEnd(curStroke.pts[0], [nx, ny])];
-      const el = document.getElementById('curStroke'); if (el) el.setAttribute('d', strokeD(curStroke, V.w, V.h));
-      return;
-    }
-    if (Math.hypot((nx - last[0]) * V.w, (ny - last[1]) * V.h) * V.s < 2) return; // 細かすぎる点は省く
-    curStroke.pts.push([nx, ny]);
-    const el = document.getElementById('curStroke'); if (el) el.setAttribute('d', strokeD(curStroke, V.w, V.h));
-    return;
-  }
+  if (gest.type === 'annot') { drawAnnot.move(annotPos(e), e); return; }
   if (gest.type === 'one') {
     const dx = e.clientX - gest.sx, dy = e.clientY - gest.sy;
     if (Math.hypot(dx, dy) > 12) gest.moved = true;
@@ -415,16 +319,7 @@ stage.addEventListener('pointermove', e => {
 function endPtr(e) {
   if (!ptrs.has(e.pointerId)) return;
   ptrs.delete(e.pointerId);
-  if (gest?.type === 'pentap' && ptrs.size === 0) { const g0 = gest; gest = null; if (!g0.moved) openTextDlg(e.clientX, e.clientY); return; }
-  if (gest?.type === 'pen' && ptrs.size === 0) {
-    clearTimeout(gest.timer);
-    if (curStroke) {
-      curStroke.pts = curStroke.pts.map(p => [Math.round(p[0] * 1e4) / 1e4, Math.round(p[1] * 1e4) / 1e4]);
-      ((S.drawing.sketch ??= {})[S.page] ??= []).push(curStroke);
-      curStroke = null; saveSite(); drawMarks();
-    }
-    gest = null; return;
-  }
+  if (gest?.type === 'annot' && ptrs.size === 0) { gest = null; drawAnnot.up(annotPos(e), e); return; }
   if (gest?.type === 'one' && ptrs.size === 0) {
     if (gest.drag && gest.moved) scheduleSave();
     else if (!gest.moved && Date.now() - gest.t < 600) onTap(e.clientX, e.clientY, gest.hit);
@@ -808,95 +703,43 @@ $('#photoFloor').onchange = async e => {
   renderPhotos(); toast(`${photoLabel(viewing)} に変えました`);
 };
 let viewing = null, viewUrl = null;
-/* 写真への書き込み（線・文字）。写真の幅を1とした割合で ph.sketch に保存 */
-const PH = { on: false, text: false, color: '#d7261e', w: '細', nw: 1, nh: 1, cur: null, gest: null };
+/* 写真への書き込み（道具の中身は annot.js）。写真の幅を1とした割合で ph.sketch に保存 */
+const PH = { on: false, nw: 1, nh: 1, id: null };
 const phSvg = $('#photoSvg'), phWrap = $('#photoWrap');
+async function savePhotoSketch() { if (viewing) { await Store.put('photos', viewing); renderPhotos(); } }
+const photoAnnot = new Annotator({
+  items: () => (viewing.sketch ??= []),
+  peek: () => viewing?.sketch || [],
+  save: () => savePhotoSketch(),
+  render: () => renderPhotoSketch(),
+  size: () => ({ W: PH.nw, H: PH.nh }),
+  k: () => (phSvg.getBoundingClientRect().width || 1) / PH.nw,
+  textF: 2,
+  bar: $('#phTools'),
+  btn: 'sm',
+});
 function renderPhotoSketch() {
-  const W = PH.nw, H = PH.nh, items = [...(viewing?.sketch || []), ...(PH.cur ? [PH.cur] : [])];
-  phSvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-  phSvg.innerHTML = items.map(it => it.t === 'text'
-    ? `<text x="${it.x * W}" y="${it.y * H}" font-size="${it.f * W}" font-weight="700" fill="${it.c}" stroke="#fff" stroke-width="${it.f * W * 0.18}" paint-order="stroke" dominant-baseline="middle" font-family="sans-serif">${esc(it.s)}</text>`
-    : `<path d="${strokeD(it, W, H)}" fill="none" stroke="${it.c}" stroke-width="${it.w * W}" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+  phSvg.setAttribute('viewBox', `0 0 ${PH.nw} ${PH.nh}`);
+  phSvg.innerHTML = viewing ? photoAnnot.svg() : '';
 }
-async function savePhotoSketch() { await Store.put('photos', viewing); renderPhotos(); }
 function setPhotoPen(on) {
-  PH.on = on; PH.cur = null;
+  PH.on = on; photoAnnot.clearSel();
   $('#phPen').classList.toggle('on', on); $('#phPen').setAttribute('aria-pressed', on);
   $('#phTools').hidden = !on; phWrap.classList.toggle('drawing', on);
+  renderPhotoSketch();
 }
 $('#phPen').onclick = () => setPhotoPen(!PH.on);
-document.querySelectorAll('#phTools .ppc').forEach(b => b.onclick = () => { PH.color = b.dataset.c; document.querySelectorAll('#phTools .ppc').forEach(x => x.classList.toggle('on', x === b)); });
-const phWLabel = () => `${PH.text ? '文字' : '線'}：${PH.w === '細' ? (PH.text ? '小' : '細') : (PH.text ? '大' : '太')}`;
-$('#phW').onclick = () => { PH.w = PH.w === '細' ? '太' : '細'; $('#phW').textContent = phWLabel(); };
-$('#phText').onclick = () => setPhText(!PH.text);
-$('#phUndo').onclick = () => { if (!viewing?.sketch?.length) { toast('消すものがありません'); return; } viewing.sketch.pop(); renderPhotoSketch(); savePhotoSketch(); };
 const phPos = e => { const r = phSvg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
-function phHitText(p) {
-  const g = document.createElement('canvas').getContext('2d');
-  const list = viewing?.sketch || [];
-  for (let i = list.length - 1; i >= 0; i--) {
-    const it = list[i]; if (it.t !== 'text') continue;
-    g.font = `700 ${it.f * PH.nw}px sans-serif`;
-    const w = g.measureText(it.s).width / PH.nw, h = it.f * PH.nw / PH.nh;
-    if (p[0] >= it.x - 0.02 && p[0] <= it.x + w + 0.02 && p[1] >= it.y - h && p[1] <= it.y + h) return it;
-  }
-  return null;
-}
 phSvg.addEventListener('pointerdown', e => {
-  if (!PH.on || PH.gest) return;
+  if (!PH.on) return;
+  if (PH.id !== null) { photoAnnot.cancel(); renderPhotoSketch(); PH.id = null; return; } // 2本目の指は取りやめ
   try { phSvg.setPointerCapture(e.pointerId); } catch (err) {}
-  const p = phPos(e);
-  if (PH.text) { PH.gest = { id: e.pointerId, tap: true, sx: e.clientX, sy: e.clientY, p }; return; }
-  PH.cur = { c: PH.color, w: PEN_W[PH.w], pts: [p] };
-  PH.gest = { id: e.pointerId, ax: e.clientX, ay: e.clientY, straight: false };
-  armPhotoStraight(); renderPhotoSketch();
+  PH.id = e.pointerId; photoAnnot.down(phPos(e), e);
 });
-phSvg.addEventListener('pointermove', e => {
-  const g = PH.gest; if (!g || g.id !== e.pointerId) return;
-  if (g.tap) return;
-  const p = phPos(e);
-  if (Math.hypot(e.clientX - g.ax, e.clientY - g.ay) > 6) { g.ax = e.clientX; g.ay = e.clientY; if (!g.straight) armPhotoStraight(); }
-  if (g.straight) PH.cur.pts = [PH.cur.pts[0], phSnap(PH.cur.pts[0], p)];
-  else PH.cur.pts.push(p);
-  renderPhotoSketch();
-});
-function phEnd(e) {
-  const g = PH.gest; if (!g || g.id !== e.pointerId) return;
-  PH.gest = null; clearTimeout(g.timer);
-  if (g.tap) {
-    if (Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > 12) return;
-    const edit = phHitText(g.p), list = () => (viewing.sketch ??= []);
-    showTextDlg(edit,
-      s => { if (edit) { edit.s = s; edit.c = PH.color; } else list().push({ t: 'text', x: g.p[0], y: g.p[1], s, c: PH.color, f: TEXT_F[PH.w] * 2 }); renderPhotoSketch(); savePhotoSketch(); },
-      () => { const l = list(), i = l.indexOf(edit); if (i >= 0) l.splice(i, 1); renderPhotoSketch(); savePhotoSketch(); },
-      () => setPhText(false));
-    return;
-  }
-  if (PH.cur) {
-    PH.cur.pts = PH.cur.pts.map(q => [Math.round(q[0] * 1e4) / 1e4, Math.round(q[1] * 1e4) / 1e4]);
-    (viewing.sketch ??= []).push(PH.cur); PH.cur = null;
-    renderPhotoSketch(); savePhotoSketch();
-  }
-}
+phSvg.addEventListener('pointermove', e => { if (PH.id === e.pointerId) photoAnnot.move(phPos(e), e); });
+function phEnd(e) { if (PH.id !== e.pointerId) return; PH.id = null; photoAnnot.up(phPos(e), e); }
 phSvg.addEventListener('pointerup', phEnd);
 phSvg.addEventListener('pointercancel', phEnd);
-function phSnap(a, b) {
-  const dx = (b[0] - a[0]) * PH.nw, dy = (b[1] - a[1]) * PH.nh, t = Math.tan(SNAP_DEG * Math.PI / 180);
-  if (Math.abs(dy) <= Math.abs(dx) * t) return [b[0], a[1]];
-  if (Math.abs(dx) <= Math.abs(dy) * t) return [a[0], b[1]];
-  return b;
-}
-function armPhotoStraight() {
-  const g = PH.gest; if (!g) return;
-  clearTimeout(g.timer);
-  g.timer = setTimeout(() => {
-    if (PH.gest !== g || !PH.cur || PH.cur.pts.length < 2) return;
-    const a = PH.cur.pts[0], b = PH.cur.pts[PH.cur.pts.length - 1], r = phSvg.getBoundingClientRect();
-    if (Math.hypot((b[0] - a[0]) * r.width, (b[1] - a[1]) * r.height) < 15) return;
-    g.straight = true; PH.cur.pts = [a, phSnap(a, b)]; renderPhotoSketch();
-    try { navigator.vibrate?.(15); } catch (err) {}
-  }, STRAIGHT_MS);
-}
 function openPhoto(ph) {
   viewing = ph; if (viewUrl) URL.revokeObjectURL(viewUrl);
   setPhotoPen(false);
