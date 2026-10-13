@@ -1,5 +1,5 @@
 // 電波のない現場でも開けるように、アプリ本体とPDF部品をスマホに保存しておく
-const CACHE = 'jissokucho-v15';
+const CACHE = 'jissokucho-v16';
 const FILES = [
   './', 'index.html', 'style.css', 'store.js', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js',
