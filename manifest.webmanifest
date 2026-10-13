@@ -1,0 +1,16 @@
+{
+  "name": "実測帳",
+  "short_name": "実測帳",
+  "description": "図面をタップして番号を打ち、階ごとの実測値を記録する手摺の現場実測アプリ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f1f3ee",
+  "theme_color": "#24506e",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

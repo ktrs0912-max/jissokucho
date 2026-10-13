@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#24506e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="実測帳">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>実測帳</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ホーム：現場一覧 -->
+<section id="vHome" class="view">
+  <header class="top">
+    <h1>実測帳<small>図面で番号を打って実測</small></h1>
+  </header>
+  <main class="pad stack">
+    <div class="row">
+      <input id="newSiteName" type="text" placeholder="現場名（例：紺屋町）" aria-label="現場名">
+      <button id="addSite" class="primary" type="button">＋ 現場を追加</button>
+    </div>
+    <ul id="siteList" class="list"></ul>
+    <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
+    <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
+  </main>
+</section>
+
+<!-- 現場：図面一覧 -->
+<section id="vSite" class="view" hidden>
+  <header class="top">
+    <button class="back" data-go="home" type="button" aria-label="戻る">‹</button>
+    <h1 id="siteTitle"></h1>
+  </header>
+  <main class="pad stack">
+    <label class="primary filebtn" for="fileIn">＋ 図面を追加（PDF・写真）</label>
+    <input id="fileIn" type="file" accept="application/pdf,image/*" hidden>
+    <p id="loadMsg" class="note" hidden></p>
+    <ul id="drawList" class="list"></ul>
+    <p id="siteEmpty" class="note" hidden>図面がまだありません。施工図のPDFか、図面を撮った写真を追加してください。</p>
+    <div class="dangerzone">
+      <button id="delSite" class="danger" type="button">この現場を削除</button>
+    </div>
+  </main>
+</section>
+
+<!-- 図面ビュー：番号打ち＋入力 -->
+<section id="vDraw" class="view drawview" hidden>
+  <header class="top">
+    <button class="back" data-go="site" type="button" aria-label="戻る">‹</button>
+    <h1 id="drawTitle"></h1>
+    <div class="pager">
+      <button id="pgPrev" type="button" aria-label="前のページ">◀</button>
+      <span id="pgLabel"></span>
+      <button id="pgNext" type="button" aria-label="次のページ">▶</button>
+    </div>
+  </header>
+
+  <div class="posbar">
+    <div id="posChips" class="chips"></div>
+    <button id="addPos" type="button" class="chip add">＋ 位置</button>
+  </div>
+
+  <div class="split">
+    <div id="stage" class="stage">
+      <div id="layer" class="layer">
+        <canvas id="cv"></canvas>
+        <svg id="marks" xmlns="http://www.w3.org/2000/svg"></svg>
+      </div>
+      <div class="tools">
+        <button id="modeBtn" type="button" class="tool on" aria-pressed="true">● 番号を打つ</button>
+        <button id="undoBtn" type="button" class="tool">↶ 取り消し</button>
+        <button id="fitBtn" type="button" class="tool">全体</button>
+      </div>
+      <p id="stageMsg" class="stagemsg" hidden></p>
+    </div>
+
+    <div class="panel">
+      <div id="noPos" class="note">上の「＋ 位置」で位置（例：KT-2）を作ると、図面をタップして①②③…と番号を打てます。</div>
+      <div id="posBody" hidden>
+        <div class="poshead">
+          <strong id="posName"></strong>
+          <span id="posMeta" class="small muted"></span>
+          <span class="grow"></span>
+          <span id="saveState" class="small muted"></span>
+        </div>
+        <div id="selBar" class="selbar" hidden>
+          <span id="selLabel"></span>
+          <button id="delPoint" type="button" class="danger sm">この番号を削除</button>
+        </div>
+        <div class="scroller"><table id="grid"></table></div>
+        <div class="legend small muted">
+          <span><i class="sw red"></i>実測値（mm）</span>
+          <span><i class="sw warn"></i>他の階とズレが大きい（要確認）</span>
+        </div>
+        <div class="row wrap">
+          <button id="addFloor" type="button">＋ 階</button>
+          <button id="copyBtn" type="button">Excel用にコピー</button>
+          <button id="csvBtn" type="button">CSV</button>
+          <button id="pngBtn" type="button">番号入り図面を保存</button>
+          <button id="delPos" type="button" class="danger">位置を削除</button>
+        </div>
+        <textarea id="memo" placeholder="メモ（例：5F ⑥は壁の出っ張りあり）" aria-label="メモ"></textarea>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 位置の作成 -->
+<dialog id="posDlg">
+  <form method="dialog" class="stack">
+    <h2>位置を追加</h2>
+    <label>位置の名前<input id="pName" type="text" placeholder="例：KT-2" required></label>
+    <div class="row">
+      <label>開始階<input id="pFrom" type="number" inputmode="numeric" value="2" min="1" max="60"></label>
+      <label>終了階<input id="pTo" type="number" inputmode="numeric" value="9" min="1" max="60"></label>
+    </div>
+    <p id="pErr" class="err" hidden></p>
+    <div class="row">
+      <button value="ok" id="pOk" class="primary">作成</button>
+      <button value="cancel" formnovalidate>やめる</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 確認 -->
+<dialog id="askDlg">
+  <form method="dialog" class="stack">
+    <p id="askText"></p>
+    <div class="row">
+      <button value="ok" class="danger">削除する</button>
+      <button value="cancel">やめる</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="store.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
