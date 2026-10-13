@@ -233,8 +233,9 @@ function armStraight() {
     try { navigator.vibrate?.(15); } catch (e) {}
   }, STRAIGHT_MS);
 }
-function drawStrokes(g, d, page, W, H) {
-  (d.sketch?.[page] || []).forEach(st => {
+function drawStrokes(g, d, page, W, H) { drawItems(g, d.sketch?.[page] || [], W, H); }
+function drawItems(g, items, W, H) {
+  items.forEach(st => {
     if (st.t === 'text') {
       g.font = `700 ${st.f * W}px sans-serif`; g.textAlign = 'left'; g.textBaseline = 'middle';
       g.lineWidth = st.f * W * 0.18; g.strokeStyle = '#fff'; g.lineJoin = 'round'; g.strokeText(st.s, st.x * W, st.y * H);
@@ -268,8 +269,16 @@ $('#penUndo').onclick = () => {
   if (!list?.length) { toast('消すものがありません'); return; }
   list.pop(); saveSite(); drawMarks();
 };
-// 文字の置き場所・直す文字をタップで決める
-let textAt = null, textEdit = null;
+// 文字の置き場所・直す文字をタップで決める（図面と写真で同じ入力画面を使う）
+let textTarget = null;
+function showTextDlg(edit, onSave, onDelete) {
+  textTarget = { edit, onSave, onDelete };
+  $('#textTitle').textContent = edit ? '文字を直す' : '文字を書く';
+  $('#textIn').value = edit ? edit.s : '';
+  $('#textOk').textContent = edit ? '直す' : '置く';
+  $('#textDel').hidden = !edit;
+  $('#textDlg').showModal(); $('#textIn').focus();
+}
 function hitText(cx, cy) {
   const p = toLayer(cx, cy), list = S.drawing?.sketch?.[S.page] || [];
   const g = document.createElement('canvas').getContext('2d');
@@ -282,31 +291,21 @@ function hitText(cx, cy) {
   return null;
 }
 function openTextDlg(cx, cy) {
-  textEdit = hitText(cx, cy);
-  const p = toLayer(cx, cy);
-  if (!textEdit && (p.x < 0 || p.y < 0 || p.x > V.w || p.y > V.h)) return;
-  textAt = { x: p.x / V.w, y: p.y / V.h };
-  $('#textTitle').textContent = textEdit ? '文字を直す' : '文字を書く';
-  $('#textIn').value = textEdit ? textEdit.s : '';
-  $('#textOk').textContent = textEdit ? '直す' : '置く';
-  $('#textDel').hidden = !textEdit;
-  $('#textDlg').showModal(); $('#textIn').focus();
+  const edit = hitText(cx, cy), p = toLayer(cx, cy);
+  if (!edit && (p.x < 0 || p.y < 0 || p.x > V.w || p.y > V.h)) return;
+  const at = { x: Math.round(p.x / V.w * 1e4) / 1e4, y: Math.round(p.y / V.h * 1e4) / 1e4 };
+  const list = () => ((S.drawing.sketch ??= {})[S.page] ??= []);
+  showTextDlg(edit,
+    s => { if (edit) { edit.s = s; edit.c = penColor; } else list().push({ t: 'text', ...at, s, c: penColor, f: TEXT_F[penW] }); saveSite(); drawMarks(); },
+    () => { const l = list(), i = l.indexOf(edit); if (i >= 0) l.splice(i, 1); saveSite(); drawMarks(); toast('文字を消しました'); });
 }
 $('#textForm').onsubmit = e => {
   e.preventDefault();
   const s = $('#textIn').value.trim();
   $('#textDlg').close();
-  if (!s) return;
-  if (textEdit) { textEdit.s = s; textEdit.c = penColor; }
-  else ((S.drawing.sketch ??= {})[S.page] ??= []).push({ t: 'text', x: Math.round(textAt.x * 1e4) / 1e4, y: Math.round(textAt.y * 1e4) / 1e4, s, c: penColor, f: TEXT_F[penW] });
-  saveSite(); drawMarks();
+  if (s && textTarget) textTarget.onSave(s);
 };
-$('#textDel').onclick = () => {
-  $('#textDlg').close();
-  const list = S.drawing?.sketch?.[S.page]; if (!list || !textEdit) return;
-  const i = list.indexOf(textEdit); if (i >= 0) list.splice(i, 1);
-  saveSite(); drawMarks(); toast('文字を消しました');
-};
+$('#textDel').onclick = () => { $('#textDlg').close(); if (textTarget?.edit) textTarget.onDelete(); };
 $('#textCancel').onclick = () => $('#textDlg').close();
 $('#penClear').onclick = async () => {
   const list = S.drawing?.sketch?.[S.page];
@@ -801,9 +800,101 @@ $('#photoFloor').onchange = async e => {
   renderPhotos(); toast(`${photoLabel(viewing)} に変えました`);
 };
 let viewing = null, viewUrl = null;
+/* 写真への書き込み（線・文字）。写真の幅を1とした割合で ph.sketch に保存 */
+const PH = { on: false, text: false, color: '#d7261e', w: '細', nw: 1, nh: 1, cur: null, gest: null };
+const phSvg = $('#photoSvg'), phWrap = $('#photoWrap');
+function renderPhotoSketch() {
+  const W = PH.nw, H = PH.nh, items = [...(viewing?.sketch || []), ...(PH.cur ? [PH.cur] : [])];
+  phSvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  phSvg.innerHTML = items.map(it => it.t === 'text'
+    ? `<text x="${it.x * W}" y="${it.y * H}" font-size="${it.f * W}" font-weight="700" fill="${it.c}" stroke="#fff" stroke-width="${it.f * W * 0.18}" paint-order="stroke" dominant-baseline="middle" font-family="sans-serif">${esc(it.s)}</text>`
+    : `<path d="${strokeD(it, W, H)}" fill="none" stroke="${it.c}" stroke-width="${it.w * W}" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+}
+async function savePhotoSketch() { await Store.put('photos', viewing); renderPhotos(); }
+function setPhotoPen(on) {
+  PH.on = on; PH.cur = null;
+  $('#phPen').classList.toggle('on', on); $('#phPen').setAttribute('aria-pressed', on);
+  $('#phTools').hidden = !on; phWrap.classList.toggle('drawing', on);
+}
+$('#phPen').onclick = () => setPhotoPen(!PH.on);
+document.querySelectorAll('#phTools .ppc').forEach(b => b.onclick = () => { PH.color = b.dataset.c; document.querySelectorAll('#phTools .ppc').forEach(x => x.classList.toggle('on', x === b)); });
+const phWLabel = () => `${PH.text ? '文字' : '線'}：${PH.w === '細' ? (PH.text ? '小' : '細') : (PH.text ? '大' : '太')}`;
+$('#phW').onclick = () => { PH.w = PH.w === '細' ? '太' : '細'; $('#phW').textContent = phWLabel(); };
+$('#phText').onclick = () => { PH.text = !PH.text; $('#phText').classList.toggle('on', PH.text); $('#phText').setAttribute('aria-pressed', PH.text); $('#phW').textContent = phWLabel(); };
+$('#phUndo').onclick = () => { if (!viewing?.sketch?.length) { toast('消すものがありません'); return; } viewing.sketch.pop(); renderPhotoSketch(); savePhotoSketch(); };
+const phPos = e => { const r = phSvg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
+function phHitText(p) {
+  const g = document.createElement('canvas').getContext('2d');
+  const list = viewing?.sketch || [];
+  for (let i = list.length - 1; i >= 0; i--) {
+    const it = list[i]; if (it.t !== 'text') continue;
+    g.font = `700 ${it.f * PH.nw}px sans-serif`;
+    const w = g.measureText(it.s).width / PH.nw, h = it.f * PH.nw / PH.nh;
+    if (p[0] >= it.x - 0.02 && p[0] <= it.x + w + 0.02 && p[1] >= it.y - h && p[1] <= it.y + h) return it;
+  }
+  return null;
+}
+phSvg.addEventListener('pointerdown', e => {
+  if (!PH.on || PH.gest) return;
+  try { phSvg.setPointerCapture(e.pointerId); } catch (err) {}
+  const p = phPos(e);
+  if (PH.text) { PH.gest = { id: e.pointerId, tap: true, sx: e.clientX, sy: e.clientY, p }; return; }
+  PH.cur = { c: PH.color, w: PEN_W[PH.w], pts: [p] };
+  PH.gest = { id: e.pointerId, ax: e.clientX, ay: e.clientY, straight: false };
+  armPhotoStraight(); renderPhotoSketch();
+});
+phSvg.addEventListener('pointermove', e => {
+  const g = PH.gest; if (!g || g.id !== e.pointerId) return;
+  if (g.tap) return;
+  const p = phPos(e);
+  if (Math.hypot(e.clientX - g.ax, e.clientY - g.ay) > 6) { g.ax = e.clientX; g.ay = e.clientY; if (!g.straight) armPhotoStraight(); }
+  if (g.straight) PH.cur.pts = [PH.cur.pts[0], phSnap(PH.cur.pts[0], p)];
+  else PH.cur.pts.push(p);
+  renderPhotoSketch();
+});
+function phEnd(e) {
+  const g = PH.gest; if (!g || g.id !== e.pointerId) return;
+  PH.gest = null; clearTimeout(g.timer);
+  if (g.tap) {
+    if (Math.hypot(e.clientX - g.sx, e.clientY - g.sy) > 12) return;
+    const edit = phHitText(g.p), list = () => (viewing.sketch ??= []);
+    showTextDlg(edit,
+      s => { if (edit) { edit.s = s; edit.c = PH.color; } else list().push({ t: 'text', x: g.p[0], y: g.p[1], s, c: PH.color, f: TEXT_F[PH.w] * 2 }); renderPhotoSketch(); savePhotoSketch(); },
+      () => { const l = list(), i = l.indexOf(edit); if (i >= 0) l.splice(i, 1); renderPhotoSketch(); savePhotoSketch(); });
+    return;
+  }
+  if (PH.cur) {
+    PH.cur.pts = PH.cur.pts.map(q => [Math.round(q[0] * 1e4) / 1e4, Math.round(q[1] * 1e4) / 1e4]);
+    (viewing.sketch ??= []).push(PH.cur); PH.cur = null;
+    renderPhotoSketch(); savePhotoSketch();
+  }
+}
+phSvg.addEventListener('pointerup', phEnd);
+phSvg.addEventListener('pointercancel', phEnd);
+function phSnap(a, b) {
+  const dx = (b[0] - a[0]) * PH.nw, dy = (b[1] - a[1]) * PH.nh, t = Math.tan(SNAP_DEG * Math.PI / 180);
+  if (Math.abs(dy) <= Math.abs(dx) * t) return [b[0], a[1]];
+  if (Math.abs(dx) <= Math.abs(dy) * t) return [a[0], b[1]];
+  return b;
+}
+function armPhotoStraight() {
+  const g = PH.gest; if (!g) return;
+  clearTimeout(g.timer);
+  g.timer = setTimeout(() => {
+    if (PH.gest !== g || !PH.cur || PH.cur.pts.length < 2) return;
+    const a = PH.cur.pts[0], b = PH.cur.pts[PH.cur.pts.length - 1], r = phSvg.getBoundingClientRect();
+    if (Math.hypot((b[0] - a[0]) * r.width, (b[1] - a[1]) * r.height) < 15) return;
+    g.straight = true; PH.cur.pts = [a, phSnap(a, b)]; renderPhotoSketch();
+    try { navigator.vibrate?.(15); } catch (err) {}
+  }, STRAIGHT_MS);
+}
 function openPhoto(ph) {
   viewing = ph; if (viewUrl) URL.revokeObjectURL(viewUrl);
-  viewUrl = URL.createObjectURL(ph.blob); $('#photoImg').src = viewUrl;
+  setPhotoPen(false);
+  viewUrl = URL.createObjectURL(ph.blob);
+  const img = $('#photoImg');
+  img.onload = () => { PH.nw = img.naturalWidth; PH.nh = img.naturalHeight; renderPhotoSketch(); };
+  img.src = viewUrl;
   $('#photoCap').textContent = `${S.pos.name}　${photoLabel(ph)}　${new Date(ph.createdAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
   const sel = $('#photoFloor'); sel.innerHTML = '';
   [...S.pos.floors, ''].forEach(fl => { const o = document.createElement('option'); o.value = fl; o.textContent = fl || '階なし'; if ((ph.floor || '') === fl) o.selected = true; sel.append(o); });
@@ -1024,7 +1115,13 @@ $('#xlsxBtn').onclick = async () => {
       for (const { ph, i } of photos) {
         ws.getCell(`A${row + 1}`).value = `${circ(i + 1)}${ph.floor ? '　' + ph.floor : ''}　${new Date(ph.createdAt).toLocaleString('ja-JP')}`;
         const img = await createImageBitmap(ph.blob), w = 360, h = Math.round(w * img.height / img.width);
-        const id = wb.addImage({ base64: await blobToDataUrl(ph.blob), extension: 'jpeg' });
+        let data = await blobToDataUrl(ph.blob);
+        if (ph.sketch?.length) { // 書き込みがあれば写真に重ねてから貼る
+          const cc = document.createElement('canvas'); cc.width = img.width; cc.height = img.height;
+          const gg = cc.getContext('2d'); gg.drawImage(img, 0, 0); drawItems(gg, ph.sketch, cc.width, cc.height);
+          data = cc.toDataURL('image/jpeg', 0.85);
+        }
+        const id = wb.addImage({ base64: data, extension: 'jpeg' });
         ws.addImage(id, { tl: { col: 0, row: row + 1 }, ext: { width: w, height: h } });
         row += Math.ceil(h / 20) + 3;
       }

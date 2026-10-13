@@ -27,7 +27,7 @@
     <ul id="siteList" class="list"></ul>
     <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
     <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
-    <p class="note small">アプリの版：<span id="appVer">v19</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v20</span></p>
     <section class="backup stack">
       <h2>バックアップ</h2>
       <p id="backupInfo" class="note"></p>
@@ -203,7 +203,23 @@
 
 <!-- 写真の拡大表示 -->
 <dialog id="photoDlg" class="photodlg">
-  <img id="photoImg" alt="">
+  <div class="photostage">
+    <div id="photoWrap" class="photowrap">
+      <img id="photoImg" alt="">
+      <svg id="photoSvg" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none"></svg>
+    </div>
+  </div>
+  <div class="row wrap">
+    <button id="phPen" type="button" class="sm" aria-pressed="false">✎ 書き込む</button>
+    <div id="phTools" class="row wrap" hidden>
+      <button type="button" class="sm ppc on" data-c="#d7261e" aria-label="赤"><i style="background:#d7261e"></i></button>
+      <button type="button" class="sm ppc" data-c="#1f5fd1" aria-label="青"><i style="background:#1f5fd1"></i></button>
+      <button type="button" class="sm ppc" data-c="#111111" aria-label="黒"><i style="background:#111111"></i></button>
+      <button id="phW" type="button" class="sm">線：細</button>
+      <button id="phText" type="button" class="sm" aria-pressed="false">あ 文字</button>
+      <button id="phUndo" type="button" class="sm">1つ消す</button>
+    </div>
+  </div>
   <p id="photoCap"></p>
   <label class="row small muted">階を変える
     <select id="photoFloor" aria-label="写真の階"></select>
