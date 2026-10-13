@@ -27,6 +27,16 @@
     <ul id="siteList" class="list"></ul>
     <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
     <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
+    <section class="backup stack">
+      <h2>バックアップ</h2>
+      <p id="backupInfo" class="note"></p>
+      <div class="row wrap">
+        <button id="backupBtn" type="button" class="primary">ドライブに保存</button>
+        <label for="restoreIn" class="filebtn">バックアップから戻す</label>
+        <input id="restoreIn" type="file" hidden>
+      </div>
+      <p class="note small">「ドライブに保存」を押したら、出てきた一覧から「ドライブ」を選んで保存先のフォルダを決めてください。図面・番号・実測値がすべて1つのファイルに入ります。</p>
+    </section>
   </main>
 </section>
 

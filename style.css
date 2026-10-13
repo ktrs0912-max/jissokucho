@@ -34,6 +34,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .list li button{width:100%;justify-content:space-between;text-align:left;min-height:56px;font-weight:700}
 .list li button span{font-weight:400;color:var(--muted);font-size:12px}
+.backup{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
+.backup h2{font-size:15px;margin:0}
+#backupInfo.warn{color:var(--warn);font-weight:700}
 .dangerzone{margin-top:24px;border-top:1px solid var(--line);padding-top:16px}
 
 /* 図面ビュー */

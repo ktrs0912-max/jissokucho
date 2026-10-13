@@ -56,6 +56,7 @@ async function renderHome() {
     li.append(b); ul.append(li);
   });
   $('#homeEmpty').hidden = sites.length > 0;
+  renderBackupInfo();
 }
 $('#addSite').onclick = async () => {
   const name = $('#newSiteName').value.trim();
@@ -537,10 +538,11 @@ function rows() {
 async function shareOrSave(blob, filename) {
   const file = new File([blob], filename, { type: blob.type });
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: filename }); return; } catch (e) { if (e.name === 'AbortError') return; }
+    try { await navigator.share({ files: [file], title: filename }); return true; } catch (e) { if (e.name === 'AbortError') return false; }
   }
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename;
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  return true;
 }
 const fileBase = () => `${S.site.name}_${S.pos.name}`.replace(/[\\/:*?"<>|]/g, '_');
 $('#copyBtn').onclick = async () => {
@@ -570,6 +572,54 @@ $('#pngBtn').onclick = () => {
   g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(r, r, w + r, r * 2.2);
   g.fillStyle = '#1f2a36'; g.fillText(label, r * 1.5, r * 1.4);
   out.toBlob(b => shareOrSave(b, fileBase() + '_番号図.png'), 'image/png');
+};
+
+/* ---------- バックアップ ---------- */
+// 現場・図面・番号・実測値をまとめて1つのファイルにし、ドライブなどへ保存する
+const blobToDataUrl = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+function lastBackup() { try { return localStorage.getItem('jissoku.backupAt'); } catch (e) { return null; } }
+async function renderBackupInfo() {
+  const el = $('#backupInfo'), at = lastBackup();
+  const hasData = (await Store.all('sites')).length > 0;
+  const days = at ? Math.floor((Date.now() - new Date(at)) / 86400000) : null;
+  el.classList.toggle('warn', hasData && (days === null || days >= 3));
+  el.textContent = at
+    ? `最後のバックアップ：${new Date(at).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}` + (days >= 3 ? `（${days}日前。そろそろ保存しましょう）` : '')
+    : (hasData ? 'まだバックアップがありません。スマホをなくすとデータが消えるので、保存しておきましょう。' : 'データを入れたら、ここから保存できます。');
+}
+$('#backupBtn').onclick = async () => {
+  flushSave();
+  const btn = $('#backupBtn'); btn.disabled = true; btn.textContent = '準備しています…';
+  try {
+    const [sites, positions, files] = await Promise.all([Store.all('sites'), Store.all('positions'), Store.all('files')]);
+    if (!sites.length) { toast('保存するデータがまだありません'); return; }
+    const fileData = [];
+    for (const f of files) fileData.push({ id: f.id, type: f.blob.type, data: await blobToDataUrl(f.blob) });
+    const body = JSON.stringify({ app: 'jissokucho', version: 1, exportedAt: new Date().toISOString(), sites, positions, files: fileData });
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const name = `実測帳バックアップ_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.txt`;
+    if (!await shareOrSave(new Blob([body], { type: 'text/plain' }), name)) { toast('保存をやめました'); return; }
+    try { localStorage.setItem('jissoku.backupAt', d.toISOString()); } catch (e) {}
+    toast('バックアップを作りました'); renderBackupInfo();
+  } catch (err) {
+    toast('バックアップを作れませんでした：' + (err.message || err));
+  } finally { btn.disabled = false; btn.textContent = 'ドライブに保存'; }
+};
+$('#restoreIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch (err) { toast('バックアップのファイルではないようです'); return; }
+  if (data?.app !== 'jissokucho' || !Array.isArray(data.sites)) { toast('実測帳のバックアップではないようです'); return; }
+  const when = data.exportedAt ? new Date(data.exportedAt).toLocaleString('ja-JP') : '日時不明';
+  if (!await ask(`${when} のバックアップ（現場${data.sites.length}件）を戻します。同じ現場・位置は、バックアップの内容で上書きされます。`)) return;
+  try {
+    for (const fd of data.files || []) await Store.put('files', { id: fd.id, blob: await (await fetch(fd.data)).blob() });
+    for (const s of data.sites) await Store.put('sites', s);
+    for (const p of data.positions || []) await Store.put('positions', p);
+    pdfCache.clear(); persist();
+    toast(`現場${data.sites.length}件を戻しました`); renderHome();
+  } catch (err) { toast('戻せませんでした：' + (err.message || err)); }
 };
 
 /* ---------- 起動 ---------- */

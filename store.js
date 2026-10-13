@@ -14,7 +14,8 @@ const Store = (() => {
         p.createIndex('drawing', 'drawingId');
         p.createIndex('site', 'siteId');
       };
-      r.onsuccess = () => res(r.result);
+      // 別のタブや新しい版のアプリが作り直そうとしたら、こちらの接続を閉じて邪魔しない
+      r.onsuccess = () => { const d = r.result; d.onversionchange = () => { d.close(); dbp = null; }; res(d); };
       r.onerror = () => rej(r.error);
     });
     return dbp;
