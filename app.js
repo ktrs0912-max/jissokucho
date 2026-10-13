@@ -84,6 +84,7 @@ async function renderSite() {
     li.append(b); ul.append(li);
   });
   $('#siteEmpty').hidden = S.site.drawings.length > 0;
+  $('#xlsxBox').hidden = !poss.some(p => p.points.length);
 }
 async function saveSite() { S.site.updatedAt = new Date().toISOString(); await Store.put('sites', S.site); }
 
@@ -572,6 +573,127 @@ $('#pngBtn').onclick = () => {
   g.fillStyle = 'rgba(255,255,255,.9)'; g.fillRect(r, r, w + r, r * 2.2);
   g.fillStyle = '#1f2a36'; g.fillText(label, r * 1.5, r * 1.4);
   out.toBlob(b => shareOrSave(b, fileBase() + '_番号図.png'), 'image/png');
+};
+
+/* ---------- Excel（実測値記入表） ---------- */
+const EXCELJS = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+const DIFF_LIMIT = 20; // 差がこれ以上なら赤字（mm）
+function loadScript(src) {
+  return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Excelを作る部品を読み込めませんでした。電波のある所でもう一度お試しください')); document.head.append(s); });
+}
+// 図面の1ページを、指定の符号の番号入りで画像にする
+async function markedPage(d, page, pos, maxDim) {
+  const c = document.createElement('canvas'), g = c.getContext('2d');
+  if (d.type === 'pdf') {
+    const doc = await getPdf(d), pg = await doc.getPage(page);
+    const base = pg.getViewport({ scale: 1 }), vp = pg.getViewport({ scale: maxDim / Math.max(base.width, base.height) });
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    await pg.render({ canvasContext: g, viewport: vp }).promise;
+  } else {
+    const img = await createImageBitmap((await Store.get('files', d.id)).blob), k = maxDim / Math.max(img.width, img.height);
+    c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); g.drawImage(img, 0, 0, c.width, c.height);
+  }
+  const r = Math.max(8, c.width / 160);
+  pos.points.forEach((pt, i) => {
+    const x = pt.x * c.width, y = pt.y * c.height;
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = pos.color; g.fill();
+    g.lineWidth = r * 0.15; g.strokeStyle = '#fff'; g.stroke();
+    g.fillStyle = '#fff'; g.font = `700 ${r * 1.1}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), x, y + r * 0.05);
+  });
+  return c;
+}
+const colName = n => { let s = ''; for (n++; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + (n - 1) % 26) + s; return s; };
+$('#xlsxBtn').onclick = async () => {
+  flushSave();
+  const btn = $('#xlsxBtn'), label = btn.textContent; btn.disabled = true;
+  try {
+    btn.textContent = '準備しています…';
+    if (!window.ExcelJS) await loadScript(EXCELJS);
+    const poss = (await Store.byIndex('positions', 'site', S.site.id)).filter(p => p.points.length)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
+    const wb = new ExcelJS.Workbook(); wb.creator = '実測帳';
+    const thin = { style: 'thin', color: { argb: 'FFB8BFB6' } }, box = { top: thin, left: thin, bottom: thin, right: thin };
+    const head = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3EDF3' } };
+    const offFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFECC4' } };
+    // 空欄（""）は文字扱いで「20以上」に入ってしまうので、数値のときだけ赤字にする
+    const redRule = ref => { const tl = ref.split(':')[0]; return { ref, rules: [{ type: 'expression', formulae: [`AND(ISNUMBER(${tl}),${tl}>=${DIFF_LIMIT})`], style: { font: { color: { argb: 'FFFF0000' }, bold: true } } }] }; };
+
+    // 集計シート（先頭）
+    const sum = wb.addWorksheet('集計');
+    sum.columns = [{ width: 10 }, { width: 6 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 30 }];
+    sum.getCell('A1').value = `${S.site.name}　実測値 集計`; sum.getCell('A1').font = { bold: true, size: 14 };
+    sum.getCell('A2').value = `出力：${new Date().toLocaleString('ja-JP')}　単位：mm　差が${DIFF_LIMIT}mm以上は赤字。各符号のシートの数値を直すと自動で更新されます。`;
+    sum.getCell('A2').font = { size: 9, color: { argb: 'FF5F6A73' } };
+    const sh = sum.getRow(4); ['符号', '番号', '中間値', '最大値', '最小値', '差', 'データ数', '図面'].forEach((t, i) => { const c = sh.getCell(i + 1); c.value = t; c.font = { bold: true }; c.fill = head; c.border = box; c.alignment = { horizontal: 'center' }; });
+    let sr = 5;
+    const used = new Set();
+    for (const [pi, p] of poss.entries()) {
+      btn.textContent = `作成中… ${pi + 1}/${poss.length}`;
+      let nm = p.name.replace(/[\[\]:*?\/\\]/g, '_').slice(0, 28) || '符号'; while (used.has(nm)) nm += '_'; used.add(nm);
+      const ws = wb.addWorksheet(nm), d = S.site.drawings.find(x => x.id === p.drawingId);
+      const n = p.points.length, last = 2 + n - 1; // 列: A=階, B..=①..
+      ws.getColumn(1).width = 8; for (let i = 0; i < n; i++) ws.getColumn(2 + i).width = 9;
+      ws.getCell('A1').value = `符号 ${p.name}`; ws.getCell('A1').font = { bold: true, size: 14 };
+      ws.getCell('A2').value = `${S.site.name}　図面：${d?.name ?? ''}（${p.page}ページ）　単位：mm`; ws.getCell('A2').font = { size: 9, color: { argb: 'FF5F6A73' } };
+      if (p.memo) { ws.getCell('A3').value = `メモ：${p.memo}`; ws.getCell('A3').font = { size: 9 }; }
+      const hr = ws.getRow(5); hr.getCell(1).value = '階';
+      p.points.forEach((_, i) => hr.getCell(2 + i).value = circ(i + 1));
+      for (let c = 1; c <= last; c++) { const x = hr.getCell(c); x.font = { bold: true }; x.fill = head; x.border = box; x.alignment = { horizontal: 'center' }; }
+      const { off } = analyze(p);
+      p.floors.forEach((f, ri) => {
+        const row = ws.getRow(6 + ri); row.getCell(1).value = f; row.getCell(1).border = box; row.getCell(1).alignment = { horizontal: 'center' };
+        p.points.forEach((pt, ci) => {
+          const cell = row.getCell(2 + ci), v = num(p.values[f]?.[pt.id]);
+          cell.value = Number.isFinite(v) ? v : null; cell.border = box; cell.alignment = { horizontal: 'center' }; cell.numFmt = '0.#';
+          if (off.has(f + '|' + pt.id)) cell.fill = offFill;
+        });
+      });
+      const r0 = 6, r1 = 6 + p.floors.length - 1, fr = r1 + 1;
+      const { stats } = analyze(p);
+      [['中間値', 'MEDIAN'], ['最大値', 'MAX'], ['最小値', 'MIN'], ['差', null]].forEach(([lab, fn], k) => {
+        const row = ws.getRow(fr + k); row.getCell(1).value = lab; row.getCell(1).font = { bold: true }; row.getCell(1).fill = head; row.getCell(1).border = box;
+        p.points.forEach((pt, ci) => {
+          const col = colName(1 + ci), rng = `${col}${r0}:${col}${r1}`, s = stats[pt.id], cell = row.getCell(2 + ci);
+          const res = !s ? null : fn === 'MEDIAN' ? median(p.floors.map(f => num(p.values[f]?.[pt.id])).filter(Number.isFinite)) : fn === 'MAX' ? s.max : fn === 'MIN' ? s.min : s.max - s.min;
+          const formula = fn ? `IF(COUNT(${rng})=0,"",${fn}(${rng}))` : `IF(COUNT(${rng})=0,"",MAX(${rng})-MIN(${rng}))`;
+          cell.value = { formula, result: res ?? '' }; cell.border = box; cell.alignment = { horizontal: 'center' }; cell.numFmt = '0.#';
+        });
+      });
+      ws.addConditionalFormatting(redRule(`B${fr + 3}:${colName(last - 1)}${fr + 3}`));
+      // 集計シートに1番号1行で載せる
+      p.points.forEach((pt, ci) => {
+        const col = colName(1 + ci), rng = `'${nm}'!${col}${r0}:${col}${r1}`, s = stats[pt.id], row = sum.getRow(sr++);
+        const vals = p.floors.map(f => num(p.values[f]?.[pt.id])).filter(Number.isFinite);
+        const cells = [p.name, circ(ci + 1),
+          { formula: `IF(COUNT(${rng})=0,"",MEDIAN(${rng}))`, result: s ? median(vals) : '' },
+          { formula: `IF(COUNT(${rng})=0,"",MAX(${rng}))`, result: s ? s.max : '' },
+          { formula: `IF(COUNT(${rng})=0,"",MIN(${rng}))`, result: s ? s.min : '' },
+          { formula: `IF(COUNT(${rng})=0,"",MAX(${rng})-MIN(${rng}))`, result: s ? s.max - s.min : '' },
+          { formula: `COUNT(${rng})`, result: vals.length }, `${d?.name ?? ''} p${p.page}`];
+        cells.forEach((v, i) => { const c = row.getCell(i + 1); c.value = v; c.border = box; if (i < 7) c.alignment = { horizontal: 'center' }; if (i >= 2 && i <= 5) c.numFmt = '0.#'; });
+      });
+      // 番号入りの図面を表の下に貼る
+      if (d) {
+        try {
+          const cv2 = await markedPage(d, p.page, p, 1600);
+          const id = wb.addImage({ base64: cv2.toDataURL('image/png'), extension: 'png' });
+          const w = 720, h = Math.round(w * cv2.height / cv2.width);
+          ws.addImage(id, { tl: { col: 0, row: fr + 5 }, ext: { width: w, height: h } });
+        } catch (e) { ws.getCell(`A${fr + 6}`).value = '（図面を画像にできませんでした）'; }
+      }
+      ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 5 }];
+      ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+    }
+    sum.addConditionalFormatting(redRule(`F5:F${Math.max(5, sr - 1)}`));
+    sum.views = [{ state: 'frozen', ySplit: 4 }];
+    btn.textContent = 'ファイルを作っています…';
+    const buf = await wb.xlsx.writeBuffer();
+    const d = new Date(), pad = x => String(x).padStart(2, '0');
+    const name = `${S.site.name}_実測値記入表_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
+    if (await shareOrSave(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name)) toast('Excelを保存しました（ダウンロード）');
+  } catch (err) {
+    toast('Excelを作れませんでした：' + (err.message || err));
+  } finally { btn.disabled = false; btn.textContent = label; }
 };
 
 /* ---------- バックアップ ---------- */
