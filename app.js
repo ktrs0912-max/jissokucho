@@ -86,7 +86,7 @@ async function renderSite() {
 }
 async function saveSite() { S.site.updatedAt = new Date().toISOString(); await Store.put('sites', S.site); }
 
-$('#fileIn').onchange = async e => {
+$('#fileIn').onchange = $('#photoIn').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
   const msg = $('#loadMsg'); msg.hidden = false; msg.textContent = `${f.name} を読み込んでいます…`;

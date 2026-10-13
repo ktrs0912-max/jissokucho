@@ -37,8 +37,13 @@
     <h1 id="siteTitle"></h1>
   </header>
   <main class="pad stack">
-    <label class="primary filebtn" for="fileIn">＋ 図面を追加（PDF・写真）</label>
-    <input id="fileIn" type="file" accept="application/pdf,image/*" hidden>
+    <div class="row wrap">
+      <label class="primary filebtn" for="fileIn">＋ PDFを追加（ドライブ・ファイル）</label>
+      <label class="filebtn" for="photoIn">＋ 写真を追加</label>
+    </div>
+    <input id="fileIn" type="file" accept="application/pdf,.pdf" hidden>
+    <input id="photoIn" type="file" accept="image/*" hidden>
+    <p class="note small">PDFは、開いた画面で「ドライブ」や「Google ドライブ」を選ぶと、ドライブの中の施工図を選べます。</p>
     <p id="loadMsg" class="note" hidden></p>
     <ul id="drawList" class="list"></ul>
     <p id="siteEmpty" class="note" hidden>図面がまだありません。施工図のPDFか、図面を撮った写真を追加してください。</p>
