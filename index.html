@@ -126,6 +126,7 @@
         </div>
         <div class="row wrap">
           <button id="addFloor" type="button">＋ 階</button>
+          <button id="delFloor" type="button">− 階</button>
           <button id="copyBtn" type="button">Excel用にコピー</button>
           <button id="csvBtn" type="button">CSV</button>
           <button id="pngBtn" type="button">番号入り図面を保存</button>
@@ -165,10 +166,23 @@
   </form>
 </dialog>
 
+<!-- 写真を撮った直後に、どの階の写真かを選ぶ -->
+<dialog id="floorDlg">
+  <div class="stack">
+    <h2 id="floorTitle">どの階の写真？</h2>
+    <img id="floorPrev" alt="" class="floorprev">
+    <div id="floorBtns" class="chips wrapchips"></div>
+    <button id="floorCancel" type="button">保存しない</button>
+  </div>
+</dialog>
+
 <!-- 写真の拡大表示 -->
 <dialog id="photoDlg" class="photodlg">
   <img id="photoImg" alt="">
   <p id="photoCap"></p>
+  <label class="row small muted">階を変える
+    <select id="photoFloor" aria-label="写真の階"></select>
+  </label>
   <div class="row">
     <button id="photoDel" type="button" class="danger">この写真を削除</button>
     <span class="grow"></span>

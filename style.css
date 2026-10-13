@@ -68,6 +68,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .strip button{flex:0 0 auto;padding:0;min-height:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative;background:var(--surface)}
 .strip img{display:block;width:84px;height:84px;object-fit:cover}
 .strip span{position:absolute;left:0;bottom:0;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:1px 5px;border-top-right-radius:4px}
+.wrapchips{flex-wrap:wrap}
+.wrapchips .chip{min-width:64px}
+.floorprev{display:block;width:100%;max-height:30vh;object-fit:contain;background:#000;border-radius:6px}
+#photoFloor{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;min-height:40px;padding:4px 8px}
 .photodlg{width:min(96vw,720px);padding:12px}
 .photodlg img{display:block;width:100%;max-height:70vh;object-fit:contain;background:#000;border-radius:6px}
 .photodlg p{margin:8px 0}

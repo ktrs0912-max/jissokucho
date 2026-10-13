@@ -564,6 +564,16 @@ $('#addFloor').onclick = () => {
   let n = last ? parseInt(last) + 1 : 1; while (p.floors.includes(n + 'F')) n++;
   p.floors.push(n + 'F'); renderGrid(); scheduleSave();
 };
+// 一番上の階を減らす。数値が入っていたら確認してから
+$('#delFloor').onclick = async () => {
+  const p = S.pos; if (!p || p.floors.length <= 1) return;
+  const f = p.floors[p.floors.length - 1];
+  const hasVal = Object.values(p.values[f] || {}).some(v => v !== '');
+  if (hasVal && !await ask(`${f} の実測値を削除します。元に戻せません。`)) return;
+  p.floors.pop(); delete p.values[f];
+  if (S.selFloor === f) S.selFloor = null;
+  renderGrid(); scheduleSave(); toast(`${f} を減らしました`);
+};
 
 /* ---------- 番号ごとの現場写真 ---------- */
 // 写真は長い辺1600pxのJPEGに縮めて保存（容量を抑える）
@@ -588,22 +598,53 @@ function renderPhotos() {
     b.append(img, cap); b.onclick = () => openPhoto(ph); box.append(b);
   });
 }
+// 撮影後に「どの階の写真？」を選んでから保存する（前回選んだ階が強調される）
+let pendingPhoto = null, prevUrl = null, lastPhotoFloor = null;
 $('#photoCam').onchange = async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f || !S.pos || !S.selPoint) return;
+  try { pendingPhoto = { blob: await shrinkPhoto(f), pointId: S.selPoint }; }
+  catch (err) { toast('写真を読み込めませんでした：' + (err.message || err)); return; }
+  const i = S.pos.points.findIndex(x => x.id === S.selPoint);
+  $('#floorTitle').textContent = `${circ(i + 1)} の写真。どの階？`;
+  if (prevUrl) URL.revokeObjectURL(prevUrl);
+  prevUrl = URL.createObjectURL(pendingPhoto.blob); $('#floorPrev').src = prevUrl;
+  const box = $('#floorBtns'); box.innerHTML = '';
+  const guess = lastPhotoFloor ?? S.selFloor;
+  [...S.pos.floors, null].forEach(fl => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'chip';
+    b.textContent = fl ?? '階なし'; b.setAttribute('aria-pressed', fl === guess && fl !== null);
+    b.onclick = () => savePendingPhoto(fl);
+    box.append(b);
+  });
+  $('#floorDlg').showModal();
+};
+async function savePendingPhoto(floor) {
+  $('#floorDlg').close();
+  if (!pendingPhoto) return;
+  const ph = { id: uid(), siteId: S.site.id, positionId: S.pos.id, pointId: pendingPhoto.pointId, floor, blob: pendingPhoto.blob, createdAt: new Date().toISOString() };
+  pendingPhoto = null; lastPhotoFloor = floor;
   try {
-    const blob = await shrinkPhoto(f);
-    const ph = { id: uid(), siteId: S.site.id, positionId: S.pos.id, pointId: S.selPoint, floor: S.selFloor, blob, createdAt: new Date().toISOString() };
     await Store.put('photos', ph); S.photos.push(ph); persist();
     drawMarks(); renderPhotos();
     toast(`${photoLabel(ph)} に写真を付けました`);
   } catch (err) { toast('写真を保存できませんでした：' + (err.message || err)); }
+}
+$('#floorCancel').onclick = () => { pendingPhoto = null; $('#floorDlg').close(); toast('写真を保存しませんでした'); };
+$('#photoFloor').onchange = async e => {
+  if (!viewing) return;
+  viewing.floor = e.target.value || null;
+  await Store.put('photos', viewing);
+  $('#photoCap').textContent = `${S.pos.name}　${photoLabel(viewing)}　${new Date(viewing.createdAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+  renderPhotos(); toast(`${photoLabel(viewing)} に変えました`);
 };
 let viewing = null, viewUrl = null;
 function openPhoto(ph) {
   viewing = ph; if (viewUrl) URL.revokeObjectURL(viewUrl);
   viewUrl = URL.createObjectURL(ph.blob); $('#photoImg').src = viewUrl;
   $('#photoCap').textContent = `${S.pos.name}　${photoLabel(ph)}　${new Date(ph.createdAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+  const sel = $('#photoFloor'); sel.innerHTML = '';
+  [...S.pos.floors, ''].forEach(fl => { const o = document.createElement('option'); o.value = fl; o.textContent = fl || '階なし'; if ((ph.floor || '') === fl) o.selected = true; sel.append(o); });
   $('#photoDlg').showModal();
 }
 $('#photoClose').onclick = () => $('#photoDlg').close();
