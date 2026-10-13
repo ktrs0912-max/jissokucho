@@ -78,6 +78,14 @@ thead th{font-family:var(--f-ui);font-size:16px;color:var(--muted);padding:4px;m
 thead th.sel,td.sel{background:var(--sel)}
 th.fl{position:sticky;left:0;z-index:1;background:var(--surface);min-width:48px;font-size:13px;color:var(--ink);padding:0 6px;border-right:2px solid var(--line);cursor:default}
 td input{width:66px;height:44px;border:0;background:transparent;text-align:center;font:700 16px var(--f-num);color:var(--red);padding:0 2px}
+td{position:relative}
+tr.design td input{color:var(--accent);font-weight:400;font-size:14px;height:38px}
+tr.design td input::placeholder{color:var(--muted);font-size:11px;opacity:.6}
+tr.design th.fl{font-size:12px;color:var(--accent)}
+td.hasd input{height:32px;padding-top:4px}
+td .dv{display:block;height:14px;margin-top:-2px;margin-bottom:2px;font:600 11px var(--f-num);color:var(--muted)}
+td:not(.hasd) .dv{display:none}
+td .dv.over{color:var(--red);font-weight:700}
 td.off{background:var(--warnbg);position:relative}
 td.off input{color:var(--warn)}
 td.off::after{content:"!";position:absolute;top:1px;right:3px;font-size:10px;font-weight:700;color:var(--warn)}

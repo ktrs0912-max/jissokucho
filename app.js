@@ -440,6 +440,18 @@ function renderGrid() {
     th.onclick = () => selectPoint(pt.id, false);
     hr.append(th);
   });
+  // 設計値（図面の寸法）の行。入れると各階の下に「実測−設計」の差が出る
+  const dr = t.tHead.insertRow(); dr.className = 'design';
+  const d0 = document.createElement('th'); d0.className = 'fl'; d0.textContent = '設計'; dr.append(d0);
+  p.points.forEach((pt, ci) => {
+    const td = document.createElement('td'), inp = document.createElement('input');
+    if (pt.id === S.selPoint) td.className = 'sel';
+    inp.id = `d_${ci}`; inp.inputMode = 'decimal'; inp.enterKeyHint = 'next'; inp.autocomplete = 'off';
+    inp.placeholder = '図面値'; inp.value = p.design?.[pt.id] ?? '';
+    inp.dataset.dpid = pt.id; inp.dataset.c = ci;
+    inp.setAttribute('aria-label', `${circ(ci + 1)} の設計値`);
+    td.append(inp); dr.append(td);
+  });
   const tb = t.createTBody();
   p.floors.forEach((f, ri) => {
     const tr = tb.insertRow();
@@ -451,7 +463,8 @@ function renderGrid() {
       inp.placeholder = '—'; inp.value = p.values[f]?.[pt.id] ?? '';
       inp.dataset.f = f; inp.dataset.pid = pt.id; inp.dataset.r = ri; inp.dataset.c = ci;
       inp.setAttribute('aria-label', `${f} ${circ(ci + 1)}`);
-      td.append(inp);
+      const dv = document.createElement('span'); dv.className = 'dv';
+      td.append(inp, dv);
     });
   });
   const tf = t.createTFoot();
@@ -463,7 +476,15 @@ function renderGrid() {
 }
 function refreshMarks() {
   const { stats, off } = analyze(S.pos);
-  document.querySelectorAll('#grid tbody input').forEach(i => i.parentElement.classList.toggle('off', off.has(i.dataset.f + '|' + i.dataset.pid)));
+  document.querySelectorAll('#grid tbody input').forEach(i => {
+    const td = i.parentElement, dv = td.querySelector('.dv');
+    td.classList.toggle('off', off.has(i.dataset.f + '|' + i.dataset.pid));
+    const v = num(i.value), d = num(S.pos.design?.[i.dataset.pid]);
+    const diff = Number.isFinite(v) && Number.isFinite(d) ? Math.round((v - d) * 10) / 10 : null;
+    dv.textContent = diff === null ? '' : (diff > 0 ? '+' : diff < 0 ? '−' : '±') + fmt(Math.abs(diff));
+    dv.classList.toggle('over', diff !== null && Math.abs(diff) >= DIFF_LIMIT);
+    td.classList.toggle('hasd', Number.isFinite(d));
+  });
   S.pos.points.forEach(pt => {
     const s = stats[pt.id];
     $(`#s0_${pt.id}`).textContent = s ? fmt(s.min) : '–';
@@ -487,6 +508,7 @@ function removePoint(id) {
   S.photos.filter(ph => ph.pointId === id).forEach(ph => Store.del('photos', ph.id));
   S.photos = S.photos.filter(ph => ph.pointId !== id);
   Object.values(p.values).forEach(row => delete row[id]);
+  if (p.design) delete p.design[id];
   S.undo = S.undo.filter(x => x !== id);
   if (S.selPoint === id) S.selPoint = null;
   drawMarks(); renderGrid(); scheduleSave();
@@ -504,23 +526,34 @@ grid.addEventListener('input', e => {
   const i = e.target; if (i.tagName !== 'INPUT') return;
   const v = i.value.replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).trim();
   if (v !== i.value) i.value = v;
+  if (i.dataset.dpid) {
+    const dsg = S.pos.design ??= {};
+    if (v === '') delete dsg[i.dataset.dpid]; else dsg[i.dataset.dpid] = v;
+    refreshMarks(); scheduleSave(); return;
+  }
   const row = S.pos.values[i.dataset.f] ??= {};
   if (v === '') delete row[i.dataset.pid]; else row[i.dataset.pid] = v;
   refreshMarks(); scheduleSave();
 });
 grid.addEventListener('focusin', e => {
   const i = e.target; if (i.tagName !== 'INPUT') return;
-  const si0 = S.pos.points.findIndex(x => x.id === i.dataset.pid);
-  S.selFloor = i.dataset.f;
-  if (S.selPoint === i.dataset.pid) { $('#selLabel').textContent = `${S.selFloor} ${circ(si0 + 1)} を選択中`; return; }
-  S.selPoint = i.dataset.pid; drawMarks(); renderPhotos();
+  const pid = i.dataset.pid || i.dataset.dpid;
+  const si0 = S.pos.points.findIndex(x => x.id === pid);
+  S.selFloor = i.dataset.f || null;
+  const lab = `${S.selFloor ? S.selFloor + ' ' : ''}${circ(si0 + 1)} を選択中`;
+  if (S.selPoint === pid) { $('#selLabel').textContent = lab; return; }
+  S.selPoint = pid; drawMarks(); renderPhotos();
   document.querySelectorAll('#grid .sel').forEach(x => x.classList.remove('sel'));
-  document.querySelectorAll(`#grid [data-pid="${i.dataset.pid}"]`).forEach(x => (x.tagName === 'INPUT' ? x.parentElement : x).classList.add('sel'));
-  $('#selBar').hidden = false; $('#selLabel').textContent = `${S.selFloor} ${circ(si0 + 1)} を選択中`;
+  document.querySelectorAll(`#grid [data-pid="${pid}"], #grid [data-dpid="${pid}"]`).forEach(x => (x.tagName === 'INPUT' ? x.parentElement : x).classList.add('sel'));
+  $('#selBar').hidden = false; $('#selLabel').textContent = lab;
 });
 grid.addEventListener('keydown', e => {
   if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
   e.preventDefault();
+  if (e.target.dataset.dpid) { // 設計値の行は右へ。最後まで行ったら2Fの①へ
+    const nx = $(`#d_${+e.target.dataset.c + 1}`) || $('#c_0_0');
+    nx?.focus(); nx?.select(); return;
+  }
   let r = +e.target.dataset.r, c = +e.target.dataset.c + 1;
   if (c >= S.pos.points.length) { c = 0; r++; }
   const n = $(`#c_${r}_${c}`); if (n) { n.focus(); n.select(); } else e.target.blur();
@@ -600,7 +633,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) flush
 /* ---------- 書き出し ---------- */
 function rows() {
   const p = S.pos;
-  return [['階', ...p.points.map((_, i) => circ(i + 1))], ...p.floors.map(f => [f, ...p.points.map(pt => p.values[f]?.[pt.id] ?? '')])];
+  return [['階', ...p.points.map((_, i) => circ(i + 1))], ['設計', ...p.points.map(pt => p.design?.[pt.id] ?? '')], ...p.floors.map(f => [f, ...p.points.map(pt => p.values[f]?.[pt.id] ?? '')])];
 }
 async function shareOrSave(blob, filename) {
   const file = new File([blob], filename, { type: blob.type });
@@ -686,11 +719,11 @@ $('#xlsxBtn').onclick = async () => {
 
     // 集計シート（先頭）
     const sum = wb.addWorksheet('集計');
-    sum.columns = [{ width: 10 }, { width: 6 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 30 }];
+    sum.columns = [{ width: 10 }, { width: 6 }, { width: 10 }, { width: 10 }, { width: 12 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 8 }, { width: 30 }];
     sum.getCell('A1').value = `${S.site.name}　実測値 集計`; sum.getCell('A1').font = { bold: true, size: 14 };
     sum.getCell('A2').value = `出力：${new Date().toLocaleString('ja-JP')}　単位：mm　差が${DIFF_LIMIT}mm以上は赤字。各符号のシートの数値を直すと自動で更新されます。`;
     sum.getCell('A2').font = { size: 9, color: { argb: 'FF5F6A73' } };
-    const sh = sum.getRow(4); ['符号', '番号', '中間値', '最大値', '最小値', '差', 'データ数', '図面'].forEach((t, i) => { const c = sh.getCell(i + 1); c.value = t; c.font = { bold: true }; c.fill = head; c.border = box; c.alignment = { horizontal: 'center' }; });
+    const sh = sum.getRow(4); ['符号', '番号', '設計値', '中間値', '中間値−設計', '最大値', '最小値', '差', 'データ数', '図面'].forEach((t, i) => { const c = sh.getCell(i + 1); c.value = t; c.font = { bold: true }; c.fill = head; c.border = box; c.alignment = { horizontal: 'center' }; });
     let sr = 5;
     const used = new Set();
     for (const [pi, p] of poss.entries()) {
@@ -706,15 +739,18 @@ $('#xlsxBtn').onclick = async () => {
       p.points.forEach((_, i) => hr.getCell(2 + i).value = circ(i + 1));
       for (let c = 1; c <= last; c++) { const x = hr.getCell(c); x.font = { bold: true }; x.fill = head; x.border = box; x.alignment = { horizontal: 'center' }; }
       const { off } = analyze(p);
+      const DR = 6; // 設計値の行
+      const drow = ws.getRow(DR); drow.getCell(1).value = '設計'; drow.getCell(1).font = { bold: true, color: { argb: 'FF24506E' } }; drow.getCell(1).border = box; drow.getCell(1).alignment = { horizontal: 'center' };
+      p.points.forEach((pt, ci) => { const c = drow.getCell(2 + ci), v = num(p.design?.[pt.id]); c.value = Number.isFinite(v) ? v : null; c.font = { color: { argb: 'FF24506E' } }; c.border = box; c.alignment = { horizontal: 'center' }; c.numFmt = '0.#'; });
       p.floors.forEach((f, ri) => {
-        const row = ws.getRow(6 + ri); row.getCell(1).value = f; row.getCell(1).border = box; row.getCell(1).alignment = { horizontal: 'center' };
+        const row = ws.getRow(DR + 1 + ri); row.getCell(1).value = f; row.getCell(1).border = box; row.getCell(1).alignment = { horizontal: 'center' };
         p.points.forEach((pt, ci) => {
           const cell = row.getCell(2 + ci), v = num(p.values[f]?.[pt.id]);
           cell.value = Number.isFinite(v) ? v : null; cell.border = box; cell.alignment = { horizontal: 'center' }; cell.numFmt = '0.#';
           if (off.has(f + '|' + pt.id)) cell.fill = offFill;
         });
       });
-      const r0 = 6, r1 = 6 + p.floors.length - 1, fr = r1 + 1;
+      const r0 = DR + 1, r1 = r0 + p.floors.length - 1, fr = r1 + 1;
       const { stats } = analyze(p);
       [['中間値', 'MEDIAN'], ['最大値', 'MAX'], ['最小値', 'MIN'], ['差', null]].forEach(([lab, fn], k) => {
         const row = ws.getRow(fr + k); row.getCell(1).value = lab; row.getCell(1).font = { bold: true }; row.getCell(1).fill = head; row.getCell(1).border = box;
@@ -726,20 +762,46 @@ $('#xlsxBtn').onclick = async () => {
         });
       });
       ws.addConditionalFormatting(redRule(`B${fr + 3}:${colName(last - 1)}${fr + 3}`));
+      // 設計との差（実測−設計）の表。設計値か実測値が空なら空欄
+      const hasDesign = p.points.some(pt => Number.isFinite(num(p.design?.[pt.id])));
+      let tail = fr + 4; // 1始まりの、次に使える行
+      if (hasDesign) {
+        const tr0 = fr + 5;
+        ws.getCell(`A${tr0}`).value = '設計との差（実測−設計）'; ws.getCell(`A${tr0}`).font = { bold: true };
+        const hr2 = ws.getRow(tr0 + 1); hr2.getCell(1).value = '階';
+        p.points.forEach((_, i) => hr2.getCell(2 + i).value = circ(i + 1));
+        for (let c = 1; c <= last; c++) { const x = hr2.getCell(c); x.font = { bold: true }; x.fill = head; x.border = box; x.alignment = { horizontal: 'center' }; }
+        p.floors.forEach((f, ri) => {
+          const row = ws.getRow(tr0 + 2 + ri); row.getCell(1).value = f; row.getCell(1).border = box; row.getCell(1).alignment = { horizontal: 'center' };
+          p.points.forEach((pt, ci) => {
+            const col = colName(1 + ci), src = `${col}${r0 + ri}`, dsg = `${col}$${DR}`;
+            const v = num(p.values[f]?.[pt.id]), dd = num(p.design?.[pt.id]);
+            const cell = row.getCell(2 + ci);
+            cell.value = { formula: `IF(OR(${src}="",${dsg}=""),"",${src}-${dsg})`, result: Number.isFinite(v) && Number.isFinite(dd) ? Math.round((v - dd) * 10) / 10 : '' };
+            cell.border = box; cell.alignment = { horizontal: 'center' }; cell.numFmt = '+0.#;-0.#;0';
+          });
+        });
+        const ref = `B${tr0 + 2}:${colName(last - 1)}${tr0 + 1 + p.floors.length}`, tl = ref.split(':')[0];
+        ws.addConditionalFormatting({ ref, rules: [{ type: 'expression', formulae: [`AND(ISNUMBER(${tl}),ABS(${tl})>=${DIFF_LIMIT})`], style: { font: { color: { argb: 'FFFF0000' }, bold: true } } }] });
+        tail = tr0 + 2 + p.floors.length;
+      }
       // 集計シートに1番号1行で載せる
       p.points.forEach((pt, ci) => {
-        const col = colName(1 + ci), rng = `'${nm}'!${col}${r0}:${col}${r1}`, s = stats[pt.id], row = sum.getRow(sr++);
-        const vals = p.floors.map(f => num(p.values[f]?.[pt.id])).filter(Number.isFinite);
+        const col = colName(1 + ci), rng = `'${nm}'!${col}${r0}:${col}${r1}`, dref = `'${nm}'!${col}${DR}`, s = stats[pt.id], row = sum.getRow(sr++);
+        const vals = p.floors.map(f => num(p.values[f]?.[pt.id])).filter(Number.isFinite), dd = num(p.design?.[pt.id]);
+        const med = s ? median(vals) : '';
         const cells = [p.name, circ(ci + 1),
-          { formula: `IF(COUNT(${rng})=0,"",MEDIAN(${rng}))`, result: s ? median(vals) : '' },
+          { formula: `IF(${dref}="","",${dref})`, result: Number.isFinite(dd) ? dd : '' },
+          { formula: `IF(COUNT(${rng})=0,"",MEDIAN(${rng}))`, result: med },
+          { formula: `IF(OR(COUNT(${rng})=0,${dref}=""),"",MEDIAN(${rng})-${dref})`, result: s && Number.isFinite(dd) ? Math.round((med - dd) * 10) / 10 : '' },
           { formula: `IF(COUNT(${rng})=0,"",MAX(${rng}))`, result: s ? s.max : '' },
           { formula: `IF(COUNT(${rng})=0,"",MIN(${rng}))`, result: s ? s.min : '' },
           { formula: `IF(COUNT(${rng})=0,"",MAX(${rng})-MIN(${rng}))`, result: s ? s.max - s.min : '' },
           { formula: `COUNT(${rng})`, result: vals.length }, `${d?.name ?? ''} p${p.page}`];
-        cells.forEach((v, i) => { const c = row.getCell(i + 1); c.value = v; c.border = box; if (i < 7) c.alignment = { horizontal: 'center' }; if (i >= 2 && i <= 5) c.numFmt = '0.#'; });
+        cells.forEach((v, i) => { const c = row.getCell(i + 1); c.value = v; c.border = box; if (i < 9) c.alignment = { horizontal: 'center' }; if (i >= 2 && i <= 7) c.numFmt = i === 4 ? '+0.#;-0.#;0' : '0.#'; });
       });
       // 番号入りの図面を表の下に貼る
-      let row = fr + 5; // 0始まりの行番号（画像の置き場所）
+      let row = tail; // 0始まりの行番号（画像の置き場所）
       if (d) {
         try {
           const cv2 = await markedPage(d, p.page, p, 1600);
@@ -761,10 +823,11 @@ $('#xlsxBtn').onclick = async () => {
         ws.addImage(id, { tl: { col: 0, row: row + 1 }, ext: { width: w, height: h } });
         row += Math.ceil(h / 20) + 3;
       }
-      ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 5 }];
+      ws.views = [{ state: 'frozen', xSplit: 1, ySplit: DR }];
       ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
     }
-    sum.addConditionalFormatting(redRule(`F5:F${Math.max(5, sr - 1)}`));
+    sum.addConditionalFormatting(redRule(`H5:H${Math.max(5, sr - 1)}`));
+    sum.addConditionalFormatting({ ref: `E5:E${Math.max(5, sr - 1)}`, rules: [{ type: 'expression', formulae: [`AND(ISNUMBER(E5),ABS(E5)>=${DIFF_LIMIT})`], style: { font: { color: { argb: 'FFFF0000' }, bold: true } } }] });
     sum.views = [{ state: 'frozen', ySplit: 4 }];
     btn.textContent = 'ファイルを作っています…';
     const buf = await wb.xlsx.writeBuffer();
