@@ -199,9 +199,46 @@ $('#sizeBtn').onclick = () => {
 };
 renderSizeBtn();
 
+/* ---------- お絵描き（図面のページごとに保存） ---------- */
+// 線は図面の幅を1とした割合で記録するので、拡大しても画像に書き出しても同じ位置・太さになる
+const PEN_W = { 細: 0.0018, 太: 0.0045 };
+let penColor = '#d7261e', penW = '細', curStroke = null;
+S.pen = false;
+const strokeD = (st, W, H) => { const pts = st.pts.length === 1 ? [st.pts[0], st.pts[0]] : st.pts; return pts.map((p, i) => (i ? 'L' : 'M') + (p[0] * W).toFixed(1) + ' ' + (p[1] * H).toFixed(1)).join(''); };
+const strokeSvg = (st, id) => `<path${id ? ` id="${id}"` : ''} d="${strokeD(st, V.w, V.h)}" fill="none" stroke="${st.c}" stroke-width="${st.w * V.w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+function drawStrokes(g, d, page, W, H) {
+  (d.sketch?.[page] || []).forEach(st => {
+    const pts = st.pts.length === 1 ? [st.pts[0], st.pts[0]] : st.pts;
+    g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0] * W, p[1] * H) : g.moveTo(p[0] * W, p[1] * H));
+    g.strokeStyle = st.c; g.lineWidth = st.w * W; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke();
+  });
+}
+function setPen(on) {
+  S.pen = on; curStroke = null;
+  const b = $('#penBtn'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  $('#penBar').hidden = !on; stage.classList.toggle('pen', on);
+  toast(on ? '指でなぞると線が引けます。図面を動かすときは2本指' : '書くのをやめました');
+}
+$('#penBtn').onclick = () => setPen(!S.pen);
+document.querySelectorAll('#penBar .pc').forEach(b => b.onclick = () => {
+  penColor = b.dataset.c; document.querySelectorAll('#penBar .pc').forEach(x => x.classList.toggle('on', x === b));
+});
+$('#penWBtn').onclick = () => { penW = penW === '細' ? '太' : '細'; $('#penWBtn').textContent = `線：${penW}`; };
+$('#penUndo').onclick = () => {
+  const list = S.drawing?.sketch?.[S.page];
+  if (!list?.length) { toast('消す線がありません'); return; }
+  list.pop(); saveSite(); drawMarks();
+};
+$('#penClear').onclick = async () => {
+  const list = S.drawing?.sketch?.[S.page];
+  if (!list?.length) { toast('消す線がありません'); return; }
+  if (!await ask(`このページに書いた線（${list.length}本）を全部消します。元に戻せません。`)) return;
+  S.drawing.sketch[S.page] = []; saveSite(); drawMarks(); toast('線を全部消しました');
+};
+
 function drawMarks() {
   const k = sizeK(), r = 9 * k / V.s, fs = 10 * k / V.s, sw = 1.5 * Math.max(0.7, k) / V.s;
-  let h = '';
+  let h = (S.drawing?.sketch?.[S.page] || []).map(st => strokeSvg(st)).join('') + (curStroke ? strokeSvg(curStroke, 'curStroke') : '');
   S.positions.filter(p => p.page === S.page).forEach(p => {
     const active = S.pos && p.id === S.pos.id;
     p.points.forEach((pt, i) => {
@@ -232,6 +269,12 @@ stage.addEventListener('pointerdown', e => {
   if (e.target.closest('.tools')) return;
   try { stage.setPointerCapture(e.pointerId); } catch (err) {}
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (S.pen && ptrs.size === 1) { // 書くモード：1本指で線を引き始める
+    const p = toLayer(e.clientX, e.clientY);
+    curStroke = { c: penColor, w: PEN_W[penW], pts: [[p.x / V.w, p.y / V.h]] };
+    gest = { type: 'pen' }; drawMarks(); return;
+  }
+  if (gest?.type === 'pen') { curStroke = null; drawMarks(); } // 2本目の指が来たら線はやめて拡大・移動へ
   if (ptrs.size === 1) {
     const hit = hitPoint(e.clientX, e.clientY);
     gest = { type: 'one', sx: e.clientX, sy: e.clientY, vx: V.x, vy: V.y, t: Date.now(), moved: false, hit, drag: hit && !S.addMode };
@@ -243,6 +286,15 @@ stage.addEventListener('pointerdown', e => {
 stage.addEventListener('pointermove', e => {
   if (!ptrs.has(e.pointerId) || !gest) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (gest.type === 'pen') {
+    if (!curStroke) return;
+    const p = toLayer(e.clientX, e.clientY), last = curStroke.pts[curStroke.pts.length - 1];
+    const nx = p.x / V.w, ny = p.y / V.h;
+    if (Math.hypot((nx - last[0]) * V.w, (ny - last[1]) * V.h) * V.s < 2) return; // 細かすぎる点は省く
+    curStroke.pts.push([nx, ny]);
+    const el = document.getElementById('curStroke'); if (el) el.setAttribute('d', strokeD(curStroke, V.w, V.h));
+    return;
+  }
   if (gest.type === 'one') {
     const dx = e.clientX - gest.sx, dy = e.clientY - gest.sy;
     if (Math.hypot(dx, dy) > 12) gest.moved = true;
@@ -265,6 +317,14 @@ stage.addEventListener('pointermove', e => {
 function endPtr(e) {
   if (!ptrs.has(e.pointerId)) return;
   ptrs.delete(e.pointerId);
+  if (gest?.type === 'pen' && ptrs.size === 0) {
+    if (curStroke) {
+      curStroke.pts = curStroke.pts.map(p => [Math.round(p[0] * 1e4) / 1e4, Math.round(p[1] * 1e4) / 1e4]);
+      ((S.drawing.sketch ??= {})[S.page] ??= []).push(curStroke);
+      curStroke = null; saveSite(); drawMarks();
+    }
+    gest = null; return;
+  }
   if (gest?.type === 'one' && ptrs.size === 0) {
     if (gest.drag && gest.moved) scheduleSave();
     else if (!gest.moved && Date.now() - gest.t < 600) onTap(e.clientX, e.clientY, gest.hit);
@@ -708,6 +768,7 @@ $('#csvBtn').onclick = () => {
 $('#pngBtn').onclick = () => {
   const out = document.createElement('canvas'); out.width = V.w; out.height = V.h;
   const g = out.getContext('2d'); g.drawImage(cv, 0, 0);
+  drawStrokes(g, S.drawing, S.page, V.w, V.h);
   const r = Math.max(9, V.w / 180) * sizeK();
   S.positions.filter(p => p.page === S.page).forEach(p => p.points.forEach((pt, i) => {
     const x = pt.x * V.w, y = pt.y * V.h;
@@ -742,6 +803,7 @@ async function markedPage(d, page, pos, maxDim) {
     const img = await createImageBitmap((await Store.get('files', d.id)).blob), k = maxDim / Math.max(img.width, img.height);
     c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); g.drawImage(img, 0, 0, c.width, c.height);
   }
+  drawStrokes(g, d, page, c.width, c.height);
   const r = Math.max(8, c.width / 160);
   pos.points.forEach((pt, i) => {
     const x = pt.x * c.width, y = pt.y * c.height;

@@ -27,7 +27,7 @@
     <ul id="siteList" class="list"></ul>
     <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
     <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
-    <p class="note small">アプリの版：<span id="appVer">v16</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v17</span></p>
     <section class="backup stack">
       <h2>バックアップ</h2>
       <p id="backupInfo" class="note"></p>
@@ -93,7 +93,16 @@
         <canvas id="cv"></canvas>
         <svg id="marks" xmlns="http://www.w3.org/2000/svg"></svg>
       </div>
+      <div id="penBar" class="penbar" hidden>
+        <button type="button" class="tool pc on" data-c="#d7261e" aria-label="赤"><i style="background:#d7261e"></i></button>
+        <button type="button" class="tool pc" data-c="#1f5fd1" aria-label="青"><i style="background:#1f5fd1"></i></button>
+        <button type="button" class="tool pc" data-c="#111111" aria-label="黒"><i style="background:#111111"></i></button>
+        <button id="penWBtn" type="button" class="tool">線：細</button>
+        <button id="penUndo" type="button" class="tool">1本消す</button>
+        <button id="penClear" type="button" class="tool">全部消す</button>
+      </div>
       <div class="tools">
+        <button id="penBtn" type="button" class="tool" aria-pressed="false">✎ 書く</button>
         <button id="modeBtn" type="button" class="tool on" aria-pressed="true">● 番号を打つ</button>
         <button id="undoBtn" type="button" class="tool">↶ 取り消し</button>
         <button id="fitBtn" type="button" class="tool">全体</button>
