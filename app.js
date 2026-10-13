@@ -167,11 +167,19 @@ async function renderPage() {
 function fit() {
   const r = stage.getBoundingClientRect();
   if (!V.w || !r.width) return;
-  V.s = Math.min(r.width / V.w, r.height / V.h) * 0.96;
+  V.s = V.minS = Math.min(r.width / V.w, r.height / V.h) * 0.96;
   V.x = (r.width - V.w * V.s) / 2; V.y = (r.height - V.h * V.s) / 2;
   apply();
 }
+// 縮小は「図面全体が見える大きさ」まで。図面が画面の外へ逃げないように位置もおさえる
+const clampScale = s => Math.min(8, Math.max(V.minS || 0.05, s));
+function clampPan() {
+  const r = stage.getBoundingClientRect(), w = V.w * V.s, h = V.h * V.s;
+  V.x = w <= r.width ? (r.width - w) / 2 : Math.min(0, Math.max(r.width - w, V.x));
+  V.y = h <= r.height ? (r.height - h) / 2 : Math.min(0, Math.max(r.height - h, V.y));
+}
 function apply() {
+  clampPan();
   layer.style.transform = `translate(${V.x}px,${V.y}px) scale(${V.s})`;
   drawMarks();
 }
@@ -249,7 +257,7 @@ stage.addEventListener('pointermove', e => {
     const [a, b] = [...ptrs.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     const r = stage.getBoundingClientRect();
-    const ns = Math.min(8, Math.max(0.05, gest.s * d / gest.d));
+    const ns = clampScale(gest.s * d / gest.d);
     const lx = (gest.mx - r.left - gest.vx) / gest.s, ly = (gest.my - r.top - gest.vy) / gest.s;
     V.s = ns; V.x = mx - r.left - lx * ns; V.y = my - r.top - ly * ns; apply();
   }
@@ -269,7 +277,7 @@ stage.addEventListener('pointercancel', endPtr);
 stage.addEventListener('wheel', e => {
   e.preventDefault();
   const r = stage.getBoundingClientRect(), k = Math.exp(-e.deltaY * 0.0015);
-  const ns = Math.min(8, Math.max(0.05, V.s * k));
+  const ns = clampScale(V.s * k);
   const lx = (e.clientX - r.left - V.x) / V.s, ly = (e.clientY - r.top - V.y) / V.s;
   V.s = ns; V.x = e.clientX - r.left - lx * ns; V.y = e.clientY - r.top - ly * ns; apply();
 }, { passive: false });
