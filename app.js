@@ -176,7 +176,7 @@ new ResizeObserver(() => { if (!$('#vDraw').hidden) fit(); }).observe(stage);
 $('#fitBtn').onclick = fit;
 
 function drawMarks() {
-  const r = 15 / V.s, fs = 15 / V.s, sw = 2.5 / V.s;
+  const r = 9 / V.s, fs = 10 / V.s, sw = 1.5 / V.s;
   let h = '';
   S.positions.filter(p => p.page === S.page).forEach(p => {
     const active = S.pos && p.id === S.pos.id;
@@ -543,7 +543,7 @@ $('#csvBtn').onclick = () => {
 $('#pngBtn').onclick = () => {
   const out = document.createElement('canvas'); out.width = V.w; out.height = V.h;
   const g = out.getContext('2d'); g.drawImage(cv, 0, 0);
-  const r = Math.max(14, V.w / 110);
+  const r = Math.max(9, V.w / 180);
   S.positions.filter(p => p.page === S.page).forEach(p => p.points.forEach((pt, i) => {
     const x = pt.x * V.w, y = pt.y * V.h;
     g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = p.color; g.fill();
