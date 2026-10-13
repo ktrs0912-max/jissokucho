@@ -175,8 +175,21 @@ function apply() {
 new ResizeObserver(() => { if (!$('#vDraw').hidden) fit(); }).observe(stage);
 $('#fitBtn').onclick = fit;
 
+// 番号の丸の大きさ（極小〜大）。選んだ大きさはこのスマホに覚えておく
+const SIZES = [{ name: '極小', k: 0.6 }, { name: '小', k: 0.8 }, { name: '中', k: 1 }, { name: '大', k: 1.5 }];
+let sizeIdx = 2;
+try { const v = parseInt(localStorage.getItem('jissoku.size')); if (SIZES[v]) sizeIdx = v; } catch (e) {}
+const sizeK = () => SIZES[sizeIdx].k;
+function renderSizeBtn() { $('#sizeBtn').textContent = `丸：${SIZES[sizeIdx].name}`; }
+$('#sizeBtn').onclick = () => {
+  sizeIdx = (sizeIdx + 1) % SIZES.length;
+  try { localStorage.setItem('jissoku.size', sizeIdx); } catch (e) {}
+  renderSizeBtn(); drawMarks();
+};
+renderSizeBtn();
+
 function drawMarks() {
-  const r = 9 / V.s, fs = 10 / V.s, sw = 1.5 / V.s;
+  const k = sizeK(), r = 9 * k / V.s, fs = 10 * k / V.s, sw = 1.5 * Math.max(0.7, k) / V.s;
   let h = '';
   S.positions.filter(p => p.page === S.page).forEach(p => {
     const active = S.pos && p.id === S.pos.id;
@@ -543,7 +556,7 @@ $('#csvBtn').onclick = () => {
 $('#pngBtn').onclick = () => {
   const out = document.createElement('canvas'); out.width = V.w; out.height = V.h;
   const g = out.getContext('2d'); g.drawImage(cv, 0, 0);
-  const r = Math.max(9, V.w / 180);
+  const r = Math.max(9, V.w / 180) * sizeK();
   S.positions.filter(p => p.page === S.page).forEach(p => p.points.forEach((pt, i) => {
     const x = pt.x * V.w, y = pt.y * V.h;
     g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fillStyle = p.color; g.fill();
