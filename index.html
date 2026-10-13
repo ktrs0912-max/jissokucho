@@ -59,7 +59,7 @@
     <p id="siteEmpty" class="note" hidden>図面がまだありません。施工図のPDFか、図面を撮った写真を追加してください。</p>
     <div id="xlsxBox" class="stack" hidden>
       <button id="xlsxBtn" type="button" class="primary">Excelで保存（実測値記入表）</button>
-      <p class="note small">符号ごとの実測値の表、番号入りの図面、集計（中間値・最大・最小・差。差が20mm以上は赤字）を1つのExcelにまとめます。保存したファイルは「ダウンロード」フォルダに入ります。</p>
+      <p class="note small">符号ごとの実測値の表、番号入りの図面、現場写真、集計（中間値・最大・最小・差。差が20mm以上は赤字）を1つのExcelにまとめます。保存したファイルは「ダウンロード」フォルダに入ります。</p>
     </div>
     <div class="dangerzone">
       <button id="delSite" class="danger" type="button">この現場を削除</button>
@@ -112,8 +112,12 @@
         </div>
         <div id="selBar" class="selbar" hidden>
           <span id="selLabel"></span>
+          <label for="photoCam" class="filebtn sm">写真を撮る</label>
+          <input id="photoCam" type="file" accept="image/*" capture="environment" hidden>
+          <span class="grow"></span>
           <button id="delPoint" type="button" class="danger sm">この番号を削除</button>
         </div>
+        <div id="photoStrip" class="strip" hidden></div>
         <div class="scroller"><table id="grid"></table></div>
         <div class="legend small muted">
           <span><i class="sw red"></i>実測値（mm）</span>
@@ -158,6 +162,17 @@
       <button value="cancel">やめる</button>
     </div>
   </form>
+</dialog>
+
+<!-- 写真の拡大表示 -->
+<dialog id="photoDlg" class="photodlg">
+  <img id="photoImg" alt="">
+  <p id="photoCap"></p>
+  <div class="row">
+    <button id="photoDel" type="button" class="danger">この写真を削除</button>
+    <span class="grow"></span>
+    <button id="photoClose" type="button">閉じる</button>
+  </div>
 </dialog>
 
 <div id="toast" class="toast" hidden></div>

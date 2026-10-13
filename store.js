@@ -5,14 +5,21 @@ const Store = (() => {
   function open() {
     if (dbp) return dbp;
     dbp = new Promise((res, rej) => {
-      const r = indexedDB.open('jissokucho', 1);
-      r.onupgradeneeded = () => {
+      const r = indexedDB.open('jissokucho', 2);
+      r.onupgradeneeded = e => {
         const d = r.result;
-        d.createObjectStore('sites', { keyPath: 'id' });
-        d.createObjectStore('files', { keyPath: 'id' });
-        const p = d.createObjectStore('positions', { keyPath: 'id' });
-        p.createIndex('drawing', 'drawingId');
-        p.createIndex('site', 'siteId');
+        if (e.oldVersion < 1) {
+          d.createObjectStore('sites', { keyPath: 'id' });
+          d.createObjectStore('files', { keyPath: 'id' });
+          const p = d.createObjectStore('positions', { keyPath: 'id' });
+          p.createIndex('drawing', 'drawingId');
+          p.createIndex('site', 'siteId');
+        }
+        if (e.oldVersion < 2) { // 版2：番号ごとの現場写真
+          const ph = d.createObjectStore('photos', { keyPath: 'id' });
+          ph.createIndex('position', 'positionId');
+          ph.createIndex('site', 'siteId');
+        }
       };
       // 別のタブや新しい版のアプリが作り直そうとしたら、こちらの接続を閉じて邪魔しない
       r.onsuccess = () => { const d = r.result; d.onversionchange = () => { d.close(); dbp = null; }; res(d); };

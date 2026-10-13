@@ -6,7 +6,7 @@ const COLORS = ['#c42f26', '#1f6fb2', '#2f8a3b', '#a54db8', '#d07a00', '#0f8b8d'
 const PDF_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
 
-const S = { site: null, drawing: null, page: 1, pos: null, positions: [], selPoint: null, addMode: true, undo: [] };
+const S = { site: null, drawing: null, page: 1, pos: null, positions: [], selPoint: null, selFloor: null, addMode: true, undo: [], photos: [] };
 const pdfCache = new Map();
 
 function toast(t) {
@@ -113,6 +113,7 @@ $('#delSite').onclick = async () => {
   if (!await ask(`「${S.site.name}」の図面と実測値をすべて削除します。元に戻せません。`)) return;
   for (const d of S.site.drawings) await Store.del('files', d.id);
   for (const p of await Store.byIndex('positions', 'site', S.site.id)) await Store.del('positions', p.id);
+  for (const ph of await Store.byIndex('photos', 'site', S.site.id)) await Store.del('photos', ph.id);
   await Store.del('sites', S.site.id);
   toast('削除しました'); history.back();
 };
@@ -200,7 +201,9 @@ function drawMarks() {
       h += `<g opacity="${active ? 1 : .45}">`
         + (sel ? `<circle cx="${x}" cy="${y}" r="${r * 1.6}" fill="none" stroke="${p.color}" stroke-width="${sw}"/>` : '')
         + `<circle cx="${x}" cy="${y}" r="${r}" fill="${active ? p.color : '#fff'}" stroke="${p.color}" stroke-width="${sw}"/>`
-        + `<text x="${x}" y="${y}" font-size="${fs}" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="${active ? '#fff' : p.color}" font-family="sans-serif">${i + 1}</text></g>`;
+        + `<text x="${x}" y="${y}" font-size="${fs}" font-weight="700" text-anchor="middle" dominant-baseline="central" fill="${active ? '#fff' : p.color}" font-family="sans-serif">${i + 1}</text>`
+        + (active && S.photos.some(ph => ph.pointId === pt.id) ? `<circle cx="${x + r * 0.85}" cy="${y - r * 0.85}" r="${r * 0.42}" fill="#1f2a36" stroke="#fff" stroke-width="${sw * 0.7}"/>` : '')
+        + `</g>`;
     });
   });
   svg.innerHTML = h;
@@ -386,6 +389,7 @@ $('#importIn').onchange = async e => {
 $('#delPos').onclick = async () => {
   if (!S.pos || !await ask(`位置「${S.pos.name}」の番号と実測値を削除します。元に戻せません。`)) return;
   clearTimeout(saveTimer); saveTimer = null;
+  for (const ph of await Store.byIndex('photos', 'position', S.pos.id)) await Store.del('photos', ph.id);
   await Store.del('positions', S.pos.id);
   S.positions = S.positions.filter(p => p !== S.pos);
   S.pos = S.positions.find(p => p.page === S.page) || null;
@@ -410,7 +414,14 @@ function renderPos() {
   $('#posName').textContent = S.pos.name; $('#posName').style.color = S.pos.color;
   $('#posMeta').textContent = `${S.pos.floors[0] ?? ''}〜${S.pos.floors[S.pos.floors.length - 1] ?? ''}・番号 ${S.pos.points.length}個`;
   $('#memo').value = S.pos.memo || '';
+  S.photos = [];
   renderGrid();
+  const id = S.pos.id;
+  Store.byIndex('photos', 'position', id).then(list => {
+    if (S.pos?.id !== id) return;
+    S.photos = list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    drawMarks(); renderPhotos();
+  });
 }
 function renderGrid() {
   if (!S.pos) return;
@@ -418,7 +429,8 @@ function renderGrid() {
   $('#posMeta').textContent = `${p.floors[0] ?? ''}〜${p.floors[p.floors.length - 1] ?? ''}・番号 ${p.points.length}個`;
   const si = p.points.findIndex(x => x.id === S.selPoint);
   $('#selBar').hidden = si < 0;
-  if (si >= 0) $('#selLabel').textContent = `${circ(si + 1)} を選択中`;
+  if (si >= 0) $('#selLabel').textContent = `${S.selFloor ? S.selFloor + ' ' : ''}${circ(si + 1)} を選択中`;
+  renderPhotos();
   if (!p.points.length) { t.innerHTML = '<tbody><tr><td class="small muted" style="padding:14px 12px;text-align:left">図面をタップして番号を打つと、ここに入力欄が並びます。</td></tr></tbody>'; return; }
   const hr = t.createTHead().insertRow();
   const c0 = document.createElement('th'); c0.className = 'fl'; c0.textContent = '階'; hr.append(c0);
@@ -472,6 +484,8 @@ function selectPoint(id, focusInput) {
 }
 function removePoint(id) {
   const p = S.pos; p.points = p.points.filter(x => x.id !== id);
+  S.photos.filter(ph => ph.pointId === id).forEach(ph => Store.del('photos', ph.id));
+  S.photos = S.photos.filter(ph => ph.pointId !== id);
   Object.values(p.values).forEach(row => delete row[id]);
   S.undo = S.undo.filter(x => x !== id);
   if (S.selPoint === id) S.selPoint = null;
@@ -495,12 +509,14 @@ grid.addEventListener('input', e => {
   refreshMarks(); scheduleSave();
 });
 grid.addEventListener('focusin', e => {
-  const i = e.target; if (i.tagName !== 'INPUT' || S.selPoint === i.dataset.pid) return;
-  S.selPoint = i.dataset.pid; drawMarks();
+  const i = e.target; if (i.tagName !== 'INPUT') return;
+  const si0 = S.pos.points.findIndex(x => x.id === i.dataset.pid);
+  S.selFloor = i.dataset.f;
+  if (S.selPoint === i.dataset.pid) { $('#selLabel').textContent = `${S.selFloor} ${circ(si0 + 1)} を選択中`; return; }
+  S.selPoint = i.dataset.pid; drawMarks(); renderPhotos();
   document.querySelectorAll('#grid .sel').forEach(x => x.classList.remove('sel'));
   document.querySelectorAll(`#grid [data-pid="${i.dataset.pid}"]`).forEach(x => (x.tagName === 'INPUT' ? x.parentElement : x).classList.add('sel'));
-  const si = S.pos.points.findIndex(x => x.id === i.dataset.pid);
-  $('#selBar').hidden = false; $('#selLabel').textContent = `${circ(si + 1)} を選択中`;
+  $('#selBar').hidden = false; $('#selLabel').textContent = `${S.selFloor} ${circ(si0 + 1)} を選択中`;
 });
 grid.addEventListener('keydown', e => {
   if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
@@ -514,6 +530,56 @@ $('#addFloor').onclick = () => {
   const p = S.pos, last = p.floors[p.floors.length - 1];
   let n = last ? parseInt(last) + 1 : 1; while (p.floors.includes(n + 'F')) n++;
   p.floors.push(n + 'F'); renderGrid(); scheduleSave();
+};
+
+/* ---------- 番号ごとの現場写真 ---------- */
+// 写真は長い辺1600pxのJPEGに縮めて保存（容量を抑える）
+async function shrinkPhoto(file) {
+  const img = await createImageBitmap(file), k = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.8));
+}
+const photoLabel = ph => { const i = S.pos ? S.pos.points.findIndex(x => x.id === ph.pointId) : -1; return `${ph.floor ? ph.floor + ' ' : ''}${i >= 0 ? circ(i + 1) : ''}`; };
+let stripUrls = [];
+function renderPhotos() {
+  const box = $('#photoStrip');
+  stripUrls.forEach(u => URL.revokeObjectURL(u)); stripUrls = [];
+  box.innerHTML = '';
+  const list = S.pos && S.selPoint ? S.photos.filter(ph => ph.pointId === S.selPoint) : [];
+  box.hidden = !list.length;
+  list.forEach(ph => {
+    const b = document.createElement('button'), img = document.createElement('img'), cap = document.createElement('span');
+    const u = URL.createObjectURL(ph.blob); stripUrls.push(u);
+    b.type = 'button'; img.src = u; img.alt = `${photoLabel(ph)} の写真`; cap.textContent = ph.floor || '階なし';
+    b.append(img, cap); b.onclick = () => openPhoto(ph); box.append(b);
+  });
+}
+$('#photoCam').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f || !S.pos || !S.selPoint) return;
+  try {
+    const blob = await shrinkPhoto(f);
+    const ph = { id: uid(), siteId: S.site.id, positionId: S.pos.id, pointId: S.selPoint, floor: S.selFloor, blob, createdAt: new Date().toISOString() };
+    await Store.put('photos', ph); S.photos.push(ph); persist();
+    drawMarks(); renderPhotos();
+    toast(`${photoLabel(ph)} に写真を付けました`);
+  } catch (err) { toast('写真を保存できませんでした：' + (err.message || err)); }
+};
+let viewing = null, viewUrl = null;
+function openPhoto(ph) {
+  viewing = ph; if (viewUrl) URL.revokeObjectURL(viewUrl);
+  viewUrl = URL.createObjectURL(ph.blob); $('#photoImg').src = viewUrl;
+  $('#photoCap').textContent = `${S.pos.name}　${photoLabel(ph)}　${new Date(ph.createdAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+  $('#photoDlg').showModal();
+}
+$('#photoClose').onclick = () => $('#photoDlg').close();
+$('#photoDel').onclick = async () => {
+  $('#photoDlg').close();
+  if (!viewing || !await ask(`${photoLabel(viewing)} の写真を削除します。元に戻せません。`)) return;
+  await Store.del('photos', viewing.id);
+  S.photos = S.photos.filter(ph => ph.id !== viewing.id); viewing = null;
+  drawMarks(); renderPhotos(); toast('写真を削除しました');
 };
 
 /* ---------- 保存 ---------- */
@@ -673,13 +739,27 @@ $('#xlsxBtn').onclick = async () => {
         cells.forEach((v, i) => { const c = row.getCell(i + 1); c.value = v; c.border = box; if (i < 7) c.alignment = { horizontal: 'center' }; if (i >= 2 && i <= 5) c.numFmt = '0.#'; });
       });
       // 番号入りの図面を表の下に貼る
+      let row = fr + 5; // 0始まりの行番号（画像の置き場所）
       if (d) {
         try {
           const cv2 = await markedPage(d, p.page, p, 1600);
           const id = wb.addImage({ base64: cv2.toDataURL('image/png'), extension: 'png' });
           const w = 720, h = Math.round(w * cv2.height / cv2.width);
-          ws.addImage(id, { tl: { col: 0, row: fr + 5 }, ext: { width: w, height: h } });
-        } catch (e) { ws.getCell(`A${fr + 6}`).value = '（図面を画像にできませんでした）'; }
+          ws.addImage(id, { tl: { col: 0, row }, ext: { width: w, height: h } });
+          row += Math.ceil(h / 20) + 2;
+        } catch (e) { ws.getCell(`A${row + 1}`).value = '（図面を画像にできませんでした）'; row += 2; }
+      }
+      // 番号ごとの現場写真を、その下に1枚ずつ貼る
+      const photos = (await Store.byIndex('photos', 'position', p.id))
+        .map(ph => ({ ph, i: p.points.findIndex(x => x.id === ph.pointId) })).filter(x => x.i >= 0)
+        .sort((a, b) => a.i - b.i || a.ph.createdAt.localeCompare(b.ph.createdAt));
+      if (photos.length) { ws.getCell(`A${row + 1}`).value = '現場写真'; ws.getCell(`A${row + 1}`).font = { bold: true, size: 12 }; row += 2; }
+      for (const { ph, i } of photos) {
+        ws.getCell(`A${row + 1}`).value = `${circ(i + 1)}${ph.floor ? '　' + ph.floor : ''}　${new Date(ph.createdAt).toLocaleString('ja-JP')}`;
+        const img = await createImageBitmap(ph.blob), w = 360, h = Math.round(w * img.height / img.width);
+        const id = wb.addImage({ base64: await blobToDataUrl(ph.blob), extension: 'jpeg' });
+        ws.addImage(id, { tl: { col: 0, row: row + 1 }, ext: { width: w, height: h } });
+        row += Math.ceil(h / 20) + 3;
       }
       ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 5 }];
       ws.pageSetup = { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
@@ -713,11 +793,12 @@ $('#backupBtn').onclick = async () => {
   flushSave();
   const btn = $('#backupBtn'); btn.disabled = true; btn.textContent = '準備しています…';
   try {
-    const [sites, positions, files] = await Promise.all([Store.all('sites'), Store.all('positions'), Store.all('files')]);
+    const [sites, positions, files, photos] = await Promise.all([Store.all('sites'), Store.all('positions'), Store.all('files'), Store.all('photos')]);
     if (!sites.length) { toast('保存するデータがまだありません'); return; }
-    const fileData = [];
+    const fileData = [], photoData = [];
     for (const f of files) fileData.push({ id: f.id, type: f.blob.type, data: await blobToDataUrl(f.blob) });
-    const body = JSON.stringify({ app: 'jissokucho', version: 1, exportedAt: new Date().toISOString(), sites, positions, files: fileData });
+    for (const ph of photos) { const { blob, ...rest } = ph; photoData.push({ ...rest, data: await blobToDataUrl(blob) }); }
+    const body = JSON.stringify({ app: 'jissokucho', version: 2, exportedAt: new Date().toISOString(), sites, positions, files: fileData, photos: photoData });
     const d = new Date(), p = n => String(n).padStart(2, '0');
     const name = `実測帳バックアップ_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.txt`;
     if (!await shareOrSave(new Blob([body], { type: 'text/plain' }), name)) { toast('保存をやめました'); return; }
@@ -739,6 +820,7 @@ $('#restoreIn').onchange = async e => {
     for (const fd of data.files || []) await Store.put('files', { id: fd.id, blob: await (await fetch(fd.data)).blob() });
     for (const s of data.sites) await Store.put('sites', s);
     for (const p of data.positions || []) await Store.put('positions', p);
+    for (const { data: url, ...rest } of data.photos || []) await Store.put('photos', { ...rest, blob: await (await fetch(url)).blob() });
     pdfCache.clear(); persist();
     toast(`現場${data.sites.length}件を戻しました`); renderHome();
   } catch (err) { toast('戻せませんでした：' + (err.message || err)); }

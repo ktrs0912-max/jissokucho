@@ -62,6 +62,15 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .poshead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .poshead strong{font-family:var(--f-num);font-size:20px}
 .selbar{display:flex;align-items:center;gap:10px;background:var(--sel);border-radius:6px;padding:6px 10px;font-weight:700}
+.selbar{flex-wrap:wrap}
+.selbar .filebtn.sm{min-height:36px;padding:4px 10px;font-size:13px}
+.strip{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.strip button{flex:0 0 auto;padding:0;min-height:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;position:relative;background:var(--surface)}
+.strip img{display:block;width:84px;height:84px;object-fit:cover}
+.strip span{position:absolute;left:0;bottom:0;background:rgba(0,0,0,.6);color:#fff;font-size:11px;padding:1px 5px;border-top-right-radius:4px}
+.photodlg{width:min(96vw,720px);padding:12px}
+.photodlg img{display:block;width:100%;max-height:70vh;object-fit:contain;background:#000;border-radius:6px}
+.photodlg p{margin:8px 0}
 .scroller{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
 table{border-collapse:collapse;font-family:var(--f-num);font-variant-numeric:tabular-nums}
 th,td{border:1px solid var(--grid);padding:0;text-align:center}
