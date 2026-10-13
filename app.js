@@ -344,6 +344,30 @@ $('#posDlg form').addEventListener('submit', async e => {
   renderChips(); renderPos(); drawMarks();
   toast(`図面の測る場所をタップすると ① から番号が付きます`);
 });
+// Claudeが図面から読み取った符号一覧（JSON）を取り込んで、位置をまとめて作る
+// 形式: { "drawing": "図面名", "positions": [ { "name": "KT-2", "page": 1, "from": 2, "to": 9, "note": "…" } ] }
+$('#importIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch (err) { toast('取り込めませんでした。符号ファイル（.json）を選んでください'); return; }
+  const list = Array.isArray(data) ? data : data.positions;
+  if (!Array.isArray(list)) { toast('符号の一覧が見つかりませんでした'); return; }
+  if (data.drawing && data.drawing !== S.drawing.name && !await ask(`この符号ファイルは「${data.drawing}」用です。今の図面「${S.drawing.name}」に取り込みますか？`)) return;
+  let added = 0, skipped = 0;
+  for (const it of list) {
+    const name = String(it.name || '').trim().toUpperCase();
+    if (!name || S.positions.some(p => p.name === name)) { skipped++; continue; }
+    const a = parseInt(it.from) || 1, z = parseInt(it.to) || a;
+    const floors = []; for (let x = Math.min(a, z); x <= Math.max(a, z); x++) floors.push(x + 'F');
+    const now = new Date().toISOString();
+    const p = { id: uid(), siteId: S.site.id, drawingId: S.drawing.id, page: Math.min(S.drawing.pages, Math.max(1, parseInt(it.page) || 1)), name, color: COLORS[S.positions.length % COLORS.length], floors, points: [], values: {}, memo: it.note ? String(it.note) : '', createdAt: now, updatedAt: now };
+    await Store.put('positions', p); S.positions.push(p); added++;
+  }
+  if (!S.pos) S.pos = S.positions.find(p => p.page === S.page) || S.positions[0] || null;
+  renderChips(); renderPos(); drawMarks();
+  toast(`符号を${added}件追加しました` + (skipped ? `（${skipped}件は登録済みのため省略）` : ''));
+};
 $('#delPos').onclick = async () => {
   if (!S.pos || !await ask(`位置「${S.pos.name}」の番号と実測値を削除します。元に戻せません。`)) return;
   clearTimeout(saveTimer); saveTimer = null;
