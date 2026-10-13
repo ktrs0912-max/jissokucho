@@ -27,7 +27,7 @@
     <ul id="siteList" class="list"></ul>
     <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
     <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
-    <p class="note small">アプリの版：<span id="appVer">v17</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v18</span></p>
     <section class="backup stack">
       <h2>バックアップ</h2>
       <p id="backupInfo" class="note"></p>
@@ -98,7 +98,8 @@
         <button type="button" class="tool pc" data-c="#1f5fd1" aria-label="青"><i style="background:#1f5fd1"></i></button>
         <button type="button" class="tool pc" data-c="#111111" aria-label="黒"><i style="background:#111111"></i></button>
         <button id="penWBtn" type="button" class="tool">線：細</button>
-        <button id="penUndo" type="button" class="tool">1本消す</button>
+        <button id="penTextBtn" type="button" class="tool" aria-pressed="false">あ 文字</button>
+        <button id="penUndo" type="button" class="tool">1つ消す</button>
         <button id="penClear" type="button" class="tool">全部消す</button>
       </div>
       <div class="tools">
@@ -172,6 +173,20 @@
     <div class="row">
       <button value="ok" class="danger">削除する</button>
       <button value="cancel">やめる</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 図面に文字を書く -->
+<dialog id="textDlg">
+  <form class="stack" id="textForm">
+    <h2 id="textTitle">文字を書く</h2>
+    <input id="textIn" type="text" placeholder="例：ここ要確認、W=942" aria-label="書く文字" autocomplete="off">
+    <div class="row wrap">
+      <button type="submit" class="primary" id="textOk">置く</button>
+      <button type="button" id="textDel" class="danger" hidden>この文字を消す</button>
+      <span class="grow"></span>
+      <button type="button" id="textCancel">やめる</button>
     </div>
   </form>
 </dialog>
