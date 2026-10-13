@@ -211,6 +211,28 @@ const TEXT_F = { 細: 0.012, 太: 0.02 };
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
 const textSvg = it => `<text x="${it.x * V.w}" y="${it.y * V.h}" font-size="${it.f * V.w}" font-weight="700" fill="${it.c}" stroke="#fff" stroke-width="${it.f * V.w * 0.18}" paint-order="stroke" dominant-baseline="middle" font-family="sans-serif">${esc(it.s)}</text>`;
 const itemSvg = it => it.t === 'text' ? textSvg(it) : strokeSvg(it);
+// 線を引きながら0.5秒止めると、始点からの直線に変わる。水平・垂直から15°以内ならピタッと合わせる
+const STRAIGHT_MS = 500, SNAP_DEG = 15;
+function snapEnd(a, b) {
+  const dx = (b[0] - a[0]) * V.w, dy = (b[1] - a[1]) * V.h, t = Math.tan(SNAP_DEG * Math.PI / 180);
+  if (Math.abs(dy) <= Math.abs(dx) * t) return [b[0], a[1]];
+  if (Math.abs(dx) <= Math.abs(dy) * t) return [a[0], b[1]];
+  return b;
+}
+function armStraight() {
+  if (!gest || gest.type !== 'pen') return;
+  clearTimeout(gest.timer);
+  const g = gest;
+  g.timer = setTimeout(() => {
+    if (gest !== g || !curStroke || curStroke.pts.length < 2) return;
+    const a = curStroke.pts[0], b = curStroke.pts[curStroke.pts.length - 1];
+    if (Math.hypot((b[0] - a[0]) * V.w, (b[1] - a[1]) * V.h) * V.s < 15) return; // 短すぎる線はそのまま
+    g.straight = true;
+    curStroke.pts = [a, snapEnd(a, b)];
+    const el = document.getElementById('curStroke'); if (el) el.setAttribute('d', strokeD(curStroke, V.w, V.h));
+    try { navigator.vibrate?.(15); } catch (e) {}
+  }, STRAIGHT_MS);
+}
 function drawStrokes(g, d, page, W, H) {
   (d.sketch?.[page] || []).forEach(st => {
     if (st.t === 'text') {
@@ -332,9 +354,10 @@ stage.addEventListener('pointerdown', e => {
   if (S.pen && ptrs.size === 1) { // 書くモード：1本指で線を引き始める
     const p = toLayer(e.clientX, e.clientY);
     curStroke = { c: penColor, w: PEN_W[penW], pts: [[p.x / V.w, p.y / V.h]] };
-    gest = { type: 'pen' }; drawMarks(); return;
+    gest = { type: 'pen', ax: e.clientX, ay: e.clientY, straight: false };
+    armStraight(); drawMarks(); return;
   }
-  if (gest?.type === 'pen') { curStroke = null; drawMarks(); } // 2本目の指が来たら線はやめて拡大・移動へ
+  if (gest?.type === 'pen') { clearTimeout(gest.timer); curStroke = null; drawMarks(); } // 2本目の指が来たら線はやめて拡大・移動へ
   if (ptrs.size === 1) {
     const hit = hitPoint(e.clientX, e.clientY);
     gest = { type: 'one', sx: e.clientX, sy: e.clientY, vx: V.x, vy: V.y, t: Date.now(), moved: false, hit, drag: hit && !S.addMode };
@@ -351,6 +374,13 @@ stage.addEventListener('pointermove', e => {
     if (!curStroke) return;
     const p = toLayer(e.clientX, e.clientY), last = curStroke.pts[curStroke.pts.length - 1];
     const nx = p.x / V.w, ny = p.y / V.h;
+    // 指が6px以上動いたら「止まっている時間」を数え直す
+    if (Math.hypot(e.clientX - gest.ax, e.clientY - gest.ay) > 6) { gest.ax = e.clientX; gest.ay = e.clientY; if (!gest.straight) armStraight(); }
+    if (gest.straight) { // まっすぐモード中は、始点から指までの直線（水平・垂直に吸い付く）
+      curStroke.pts = [curStroke.pts[0], snapEnd(curStroke.pts[0], [nx, ny])];
+      const el = document.getElementById('curStroke'); if (el) el.setAttribute('d', strokeD(curStroke, V.w, V.h));
+      return;
+    }
     if (Math.hypot((nx - last[0]) * V.w, (ny - last[1]) * V.h) * V.s < 2) return; // 細かすぎる点は省く
     curStroke.pts.push([nx, ny]);
     const el = document.getElementById('curStroke'); if (el) el.setAttribute('d', strokeD(curStroke, V.w, V.h));
@@ -380,6 +410,7 @@ function endPtr(e) {
   ptrs.delete(e.pointerId);
   if (gest?.type === 'pentap' && ptrs.size === 0) { const g0 = gest; gest = null; if (!g0.moved) openTextDlg(e.clientX, e.clientY); return; }
   if (gest?.type === 'pen' && ptrs.size === 0) {
+    clearTimeout(gest.timer);
     if (curStroke) {
       curStroke.pts = curStroke.pts.map(p => [Math.round(p[0] * 1e4) / 1e4, Math.round(p[1] * 1e4) / 1e4]);
       ((S.drawing.sketch ??= {})[S.page] ??= []).push(curStroke);
