@@ -259,9 +259,7 @@ document.querySelectorAll('#penBar .pc').forEach(b => b.onclick = () => {
 $('#penWBtn').onclick = () => { penW = penW === '細' ? '太' : '細'; $('#penWBtn').textContent = `${penText ? '文字' : '線'}：${penW === '細' ? (penText ? '小' : '細') : (penText ? '大' : '太')}`; };
 let penText = false;
 $('#penTextBtn').onclick = () => {
-  penText = !penText;
-  const b = $('#penTextBtn'); b.classList.toggle('on', penText); b.setAttribute('aria-pressed', penText);
-  $('#penWBtn').textContent = `${penText ? '文字' : '線'}：${penW === '細' ? (penText ? '小' : '細') : (penText ? '大' : '太')}`;
+  setPenText(!penText);
   toast(penText ? '文字を置きたい所をタップしてください。置いた文字をタップすると直せます' : '線を引くモードに戻りました');
 };
 $('#penUndo').onclick = () => {
@@ -271,8 +269,8 @@ $('#penUndo').onclick = () => {
 };
 // 文字の置き場所・直す文字をタップで決める（図面と写真で同じ入力画面を使う）
 let textTarget = null;
-function showTextDlg(edit, onSave, onDelete) {
-  textTarget = { edit, onSave, onDelete };
+function showTextDlg(edit, onSave, onDelete, after) {
+  textTarget = { edit, onSave, onDelete, after };
   $('#textTitle').textContent = edit ? '文字を直す' : '文字を書く';
   $('#textIn').value = edit ? edit.s : '';
   $('#textOk').textContent = edit ? '直す' : '置く';
@@ -297,16 +295,26 @@ function openTextDlg(cx, cy) {
   const list = () => ((S.drawing.sketch ??= {})[S.page] ??= []);
   showTextDlg(edit,
     s => { if (edit) { edit.s = s; edit.c = penColor; } else list().push({ t: 'text', ...at, s, c: penColor, f: TEXT_F[penW] }); saveSite(); drawMarks(); },
-    () => { const l = list(), i = l.indexOf(edit); if (i >= 0) l.splice(i, 1); saveSite(); drawMarks(); toast('文字を消しました'); });
+    () => { const l = list(), i = l.indexOf(edit); if (i >= 0) l.splice(i, 1); saveSite(); drawMarks(); toast('文字を消しました'); },
+    () => setPenText(false));
 }
 $('#textForm').onsubmit = e => {
   e.preventDefault();
   const s = $('#textIn').value.trim();
   $('#textDlg').close();
   if (s && textTarget) textTarget.onSave(s);
+  textTarget?.after?.();
 };
-$('#textDel').onclick = () => { $('#textDlg').close(); if (textTarget?.edit) textTarget.onDelete(); };
-$('#textCancel').onclick = () => $('#textDlg').close();
+$('#textDel').onclick = () => { $('#textDlg').close(); if (textTarget?.edit) textTarget.onDelete(); textTarget?.after?.(); };
+$('#textCancel').onclick = () => { $('#textDlg').close(); textTarget?.after?.(); };
+$('#textDlg').addEventListener('cancel', () => textTarget?.after?.()); // 戻るボタンで閉じた時
+// 文字を1つ置いたら（やめた時も）自動で「線を引く」に戻す
+function setPenText(on) {
+  penText = on;
+  const b = $('#penTextBtn'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  $('#penWBtn').textContent = `${on ? '文字' : '線'}：${penW === '細' ? (on ? '小' : '細') : (on ? '大' : '太')}`;
+}
+function setPhText(on) { PH.text = on; $('#phText').classList.toggle('on', on); $('#phText').setAttribute('aria-pressed', on); $('#phW').textContent = phWLabel(); }
 $('#penClear').onclick = async () => {
   const list = S.drawing?.sketch?.[S.page];
   if (!list?.length) { toast('消す線がありません'); return; }
@@ -820,7 +828,7 @@ $('#phPen').onclick = () => setPhotoPen(!PH.on);
 document.querySelectorAll('#phTools .ppc').forEach(b => b.onclick = () => { PH.color = b.dataset.c; document.querySelectorAll('#phTools .ppc').forEach(x => x.classList.toggle('on', x === b)); });
 const phWLabel = () => `${PH.text ? '文字' : '線'}：${PH.w === '細' ? (PH.text ? '小' : '細') : (PH.text ? '大' : '太')}`;
 $('#phW').onclick = () => { PH.w = PH.w === '細' ? '太' : '細'; $('#phW').textContent = phWLabel(); };
-$('#phText').onclick = () => { PH.text = !PH.text; $('#phText').classList.toggle('on', PH.text); $('#phText').setAttribute('aria-pressed', PH.text); $('#phW').textContent = phWLabel(); };
+$('#phText').onclick = () => setPhText(!PH.text);
 $('#phUndo').onclick = () => { if (!viewing?.sketch?.length) { toast('消すものがありません'); return; } viewing.sketch.pop(); renderPhotoSketch(); savePhotoSketch(); };
 const phPos = e => { const r = phSvg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
 function phHitText(p) {
@@ -860,7 +868,8 @@ function phEnd(e) {
     const edit = phHitText(g.p), list = () => (viewing.sketch ??= []);
     showTextDlg(edit,
       s => { if (edit) { edit.s = s; edit.c = PH.color; } else list().push({ t: 'text', x: g.p[0], y: g.p[1], s, c: PH.color, f: TEXT_F[PH.w] * 2 }); renderPhotoSketch(); savePhotoSketch(); },
-      () => { const l = list(), i = l.indexOf(edit); if (i >= 0) l.splice(i, 1); renderPhotoSketch(); savePhotoSketch(); });
+      () => { const l = list(), i = l.indexOf(edit); if (i >= 0) l.splice(i, 1); renderPhotoSketch(); savePhotoSketch(); },
+      () => setPhText(false));
     return;
   }
   if (PH.cur) {
