@@ -237,13 +237,14 @@ stage.addEventListener('pointermove', e => {
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (gest.type === 'one') {
     const dx = e.clientX - gest.sx, dy = e.clientY - gest.sy;
-    if (Math.hypot(dx, dy) > 8) gest.moved = true;
+    if (Math.hypot(dx, dy) > 12) gest.moved = true;
     if (!gest.moved) return;
+    // 1本指では図面を動かさない（誤って動くのを防ぐ）。移動は2本指で行う
     if (gest.drag) {
       const p = toLayer(e.clientX, e.clientY);
       gest.hit.x = Math.min(1, Math.max(0, p.x / V.w)); gest.hit.y = Math.min(1, Math.max(0, p.y / V.h));
       S.selPoint = gest.hit.id; drawMarks();
-    } else { V.x = gest.vx + dx; V.y = gest.vy + dy; apply(); }
+    }
   } else if (gest.type === 'pinch' && ptrs.size === 2) {
     const [a, b] = [...ptrs.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
