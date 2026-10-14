@@ -178,6 +178,29 @@ const Sync = (() => {
   setInterval(() => { if (connected() && !document.hidden) syncNow(); }, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && connected()) syncNow(); });
 
-  return { connect, disconnect, syncNow, state, onChange: f => listeners.push(f), connected, wasOn, configured,
+  // Excelなどの書き出しファイルを「実測帳データ/Excel出力」に保存（同じ名前があれば上書き）
+  let outFolderId = null;
+  async function saveExport(name, blob) {
+    if (!connected() || offline()) throw new Error('ドライブとつながっていません');
+    await ensureFolder();
+    if (!outFolderId) {
+      const q = encodeURIComponent(`name='Excel出力' and '${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+      const f = (await (await api(`files?q=${q}&fields=files(id)`)).json()).files;
+      outFolderId = f?.length ? f[0].id : (await (await api('files?fields=id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Excel出力', mimeType: 'application/vnd.google-apps.folder', parents: [folderId] }) })).json()).id;
+    }
+    const q = encodeURIComponent(`name='${name.replace(/'/g, "\\'")}' and '${outFolderId}' in parents and trashed=false`);
+    const same = (await (await api(`files?q=${q}&fields=files(id)`)).json()).files;
+    let id;
+    if (same?.length) id = await upload(name, blob, same[0].id);
+    else {
+      const form = new FormData();
+      form.append('metadata', new Blob([JSON.stringify({ name, parents: [outFolderId] })], { type: 'application/json' }));
+      form.append('file', blob);
+      id = (await (await api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', { method: 'POST', body: form })).json()).id;
+    }
+    return { id, url: `https://drive.google.com/file/d/${id}/view`, overwritten: !!same?.length };
+  }
+
+  return { connect, disconnect, syncNow, state, saveExport, onChange: f => listeners.push(f), connected, wasOn, configured,
     _test: { setToken(t) { token = t; tokenExp = Date.now() + 3600e3; LS.set(K.on, true); folderId = null; } } }; // 動作確認用
 })();

@@ -987,7 +987,18 @@ $('#xlsxBtn').onclick = async () => {
     const buf = await wb.xlsx.writeBuffer();
     const d = new Date(), pad = x => String(x).padStart(2, '0');
     const name = `${S.site.name}_実測値記入表_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
-    if (await shareOrSave(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name)) toast('Excelを保存しました（ダウンロード）');
+    const xblob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    // ドライブとつながっていれば「実測帳データ/Excel出力」へ。つながっていなければスマホのダウンロードへ
+    if (Sync.connected() && navigator.onLine !== false) {
+      btn.textContent = 'ドライブに保存しています…';
+      try {
+        const r = await Sync.saveExport(name, xblob);
+        $('#savedName').textContent = name + (r.overwritten ? '（同じ名前のファイルを上書き）' : '');
+        $('#savedLink').href = r.url; $('#savedDlg').showModal();
+        return;
+      } catch (err) { toast('ドライブに保存できなかったので、ダウンロードに保存します'); }
+    }
+    if (await shareOrSave(xblob, name)) toast('Excelを保存しました（ダウンロード）');
   } catch (err) {
     toast('Excelを作れませんでした：' + (err.message || err));
   } finally { btn.disabled = false; btn.textContent = label; }
@@ -1042,6 +1053,9 @@ $('#restoreIn').onchange = async e => {
     toast(`現場${data.sites.length}件を戻しました`); renderHome();
   } catch (err) { toast('戻せませんでした：' + (err.message || err)); }
 };
+
+$('#savedClose').onclick = () => $('#savedDlg').close();
+$('#savedLink').addEventListener('click', () => $('#savedDlg').close());
 
 /* ---------- ドライブと同期（中身は sync.js） ---------- */
 function renderSync(st = Sync.state(), msg) {

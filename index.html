@@ -33,7 +33,7 @@
     <ul id="siteList" class="list"></ul>
     <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
     <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
-    <p class="note small">アプリの版：<span id="appVer">v26</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v27</span></p>
     <section class="backup stack">
       <h2>ドライブと同期</h2>
       <p id="syncInfo" class="note"></p>
@@ -76,7 +76,7 @@
     <p id="siteEmpty" class="note" hidden>図面がまだありません。施工図のPDFか、図面を撮った写真を追加してください。</p>
     <div id="xlsxBox" class="stack" hidden>
       <button id="xlsxBtn" type="button" class="primary">Excelで保存（実測値記入表）</button>
-      <p class="note small">符号ごとの実測値の表、番号入りの図面、現場写真、集計（中間値・最大・最小・差。差が20mm以上は赤字）を1つのExcelにまとめます。保存したファイルは「ダウンロード」フォルダに入ります。</p>
+      <p class="note small">符号ごとの実測値の表、番号入りの図面、現場写真、集計（中間値・最大・最小・差。差が20mm以上は赤字）を1つのExcelにまとめます。ドライブとつながっていれば「実測帳データ ＞ Excel出力」に、つながっていなければスマホの「ダウンロード」に保存します。</p>
     </div>
     <div class="dangerzone">
       <button id="delSite" class="danger" type="button">この現場を削除</button>
@@ -184,6 +184,21 @@
       <button value="cancel">やめる</button>
     </div>
   </form>
+</dialog>
+
+<!-- Excelをドライブに保存した後 -->
+<dialog id="savedDlg">
+  <div class="stack">
+    <h2>ドライブに保存しました</h2>
+    <p class="note">sato.sk.1222 のドライブの「実測帳データ ＞ Excel出力」に入っています。</p>
+    <p id="savedName" style="margin:0;font-weight:700;word-break:break-all"></p>
+    <div class="row wrap">
+      <a id="savedLink" class="filebtn primary" href="#" target="_blank" rel="noopener">ドライブで開く</a>
+      <span class="grow"></span>
+      <button type="button" id="savedClose">閉じる</button>
+    </div>
+    <p class="note small">人に送るときは、ドライブで開いて「共有」から送れます。</p>
+  </div>
 </dialog>
 
 <!-- 図面に文字を書く -->
