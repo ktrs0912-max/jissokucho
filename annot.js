@@ -32,7 +32,7 @@ function drawItems(g, items, W, H) {
 class Annotator {
   // o: { items(), peek(), save(), render(), size()->{W,H}, k()->画面px/書き込み先px, textF, bar, btn, extra:[{label,run}] }
   constructor(o) {
-    Object.assign(this, { o, tool: 'line', color: '#d7261e', w: '細', cur: null, sel: [], g: null, rect: null, eraser: null });
+    Object.assign(this, { o, tool: 'line', color: '#d7261e', w: '細', cur: null, sel: [], g: null, rect: null, eraser: null, flip: false });
     this.buildBar();
   }
   // ---- 道具バー ----
@@ -41,12 +41,14 @@ class Annotator {
     bar.innerHTML = `
       <div class="seg">
         <button type="button" class="${b}" data-tool="line">✎ 線</button>
+        <button type="button" class="${b}" data-tool="bracket">コ 寸法</button>
         <button type="button" class="${b}" data-tool="text">あ 文字</button>
         <button type="button" class="${b}" data-tool="select">⬚ 選択</button>
         <button type="button" class="${b}" data-tool="erase">消しゴム</button>
       </div>
       ${PEN_COLORS.map(([n, c]) => `<button type="button" class="${b} pc" data-c="${c}" aria-label="${n}"><i style="background:${c}"></i></button>`).join('')}
       <button type="button" class="${b}" data-act="w"></button>
+      <button type="button" class="${b}" data-act="flip"></button>
       <button type="button" class="${b}" data-act="undo">1つ戻す</button>
       <span class="selacts">
         <button type="button" class="${b}" data-act="copy">コピー</button>
@@ -57,6 +59,7 @@ class Annotator {
     bar.querySelectorAll('[data-tool]').forEach(x => x.onclick = () => this.setTool(x.dataset.tool, true));
     bar.querySelectorAll('.pc').forEach(x => x.onclick = () => this.setColor(x.dataset.c));
     bar.querySelector('[data-act=w]').onclick = () => this.toggleW();
+    bar.querySelector('[data-act=flip]').onclick = () => { this.flip = !this.flip; this.syncBar(); };
     bar.querySelector('[data-act=undo]').onclick = () => this.undo();
     bar.querySelector('[data-act=copy]').onclick = () => this.copy();
     bar.querySelector('[data-act=paste]').onclick = () => this.paste();
@@ -71,6 +74,8 @@ class Annotator {
     const t = this.tool === 'text';
     bar.querySelector('[data-act=w]').textContent = `${t ? '文字' : '線'}：${this.w === '細' ? (t ? '小' : '細') : (t ? '大' : '太')}`;
     bar.querySelector('.selacts').hidden = this.tool !== 'select';
+    const fb = bar.querySelector('[data-act=flip]');
+    fb.hidden = this.tool !== 'bracket'; fb.textContent = this.flip ? '足：下・右向き' : '足：上・左向き';
     bar.querySelector('[data-act=copy]').disabled = !this.sel.length;
     bar.querySelector('[data-act=del]').disabled = !this.sel.length;
     bar.querySelector('[data-act=paste]').disabled = !annotClipboard;
@@ -78,7 +83,7 @@ class Annotator {
   setTool(t, say) {
     this.tool = t; this.cancel(); if (t !== 'select') this.sel = [];
     this.syncBar(); this.o.render();
-    if (say) toast({ line: '指でなぞると線。途中で0.5秒止めると直線', text: '文字を置きたい所をタップ。置いた文字をタップすると直せます', select: '線や文字をタップで選んで、ドラッグで移動。囲むと複数選べます', erase: 'なぞった線・文字を消します' }[t]);
+    if (say) toast({ bracket: '測る範囲の端から端までなぞると、両端に足が付いたコの字になります', line: '指でなぞると線。途中で0.5秒止めると直線', text: '文字を置きたい所をタップ。置いた文字をタップすると直せます', select: '線や文字をタップで選んで、ドラッグで移動。囲むと複数選べます', erase: 'なぞった線・文字を消します' }[t]);
   }
   setColor(c) {
     this.color = c;
@@ -130,6 +135,16 @@ class Annotator {
     if (Math.abs(dx) <= Math.abs(dy) * t) return [a[0], b[1]];
     return b;
   }
+  // コの字（寸法の範囲）：a→b の線と、両端から同じ向きに出る短い足。足の長さは画面で約24px
+  bracketPts(a, b) {
+    const { W, H } = this.o.size(), e = this.snap(a, b);
+    const dx = (e[0] - a[0]) * W, dy = (e[1] - a[1]) * H, len = Math.hypot(dx, dy) || 1;
+    let nx = dy / len, ny = -dx / len; // 線に直角な向き（画面の座標）
+    if (Math.abs(dx) >= Math.abs(dy) ? ny > 0 : nx > 0) { nx = -nx; ny = -ny; } // 横線は上、縦線は左を基本に
+    if (this.flip) { nx = -nx; ny = -ny; }
+    const L = 24 / this.o.k(), ox = nx * L / W, oy = ny * L / H;
+    return [[a[0] + ox, a[1] + oy], a, e, [e[0] + ox, e[1] + oy]];
+  }
   armStraight() {
     const g = this.g; if (!g) return;
     clearTimeout(g.timer);
@@ -147,6 +162,9 @@ class Annotator {
     if (this.tool === 'line') {
       this.cur = { c: this.color, w: PEN_W[this.w], pts: [p] };
       this.g = { type: 'line', ax: s.x, ay: s.y, straight: false }; this.armStraight();
+    } else if (this.tool === 'bracket') {
+      this.g = { type: 'bracket', a: p };
+      this.cur = { c: this.color, w: PEN_W[this.w], pts: [p] };
     } else if (this.tool === 'text') {
       this.g = { type: 'tap', s, p, moved: false };
     } else if (this.tool === 'select') {
@@ -170,6 +188,8 @@ class Annotator {
         if (Math.hypot((p[0] - last[0]) * W, (p[1] - last[1]) * H) * this.o.k() < 2) return;
         this.cur.pts.push(p);
       }
+    } else if (g.type === 'bracket') {
+      this.cur.pts = this.bracketPts(g.a, p);
     } else if (g.type === 'tap') {
       if (Math.hypot(e.clientX - g.s.x, e.clientY - g.s.y) > 12) g.moved = true; return;
     } else if (g.type === 'move') {
@@ -189,7 +209,14 @@ class Annotator {
   up(p, e) {
     const g = this.g; if (!g) return;
     this.g = null; clearTimeout(g.timer);
-    if (g.type === 'line' && this.cur) {
+    if (g.type === 'bracket' && this.cur) {
+      const { W, H } = this.o.size(), pts = this.cur.pts, a = pts[1] || pts[0], b = pts[2] || pts[0];
+      if (pts.length === 4 && Math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H) * this.o.k() >= 10) {
+        this.cur.pts = pts.map(q => [r4(q[0]), r4(q[1])]);
+        this.o.items().push(this.cur); this.o.save();
+      }
+      this.cur = null;
+    } else if (g.type === 'line' && this.cur) {
       this.cur.pts = this.cur.pts.map(q => [r4(q[0]), r4(q[1])]);
       this.o.items().push(this.cur); this.cur = null; this.o.save();
     } else if (g.type === 'tap' && !g.moved) {
