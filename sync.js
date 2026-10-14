@@ -5,7 +5,7 @@
 //   photo_<id>     … 現場写真
 // を置く。同じ物が両方にあれば、新しく書き換えたほうを残す。
 const Sync = (() => {
-  const CLIENT_ID = ''; // ← Google Cloud で作った「OAuth クライアントID」をここに入れる
+  const CLIENT_ID = '950333121100-mr2lv09h1bokm5vpcbdj622qak0a0bed.apps.googleusercontent.com'; // Google Cloud プロジェクト jissokucho の OAuth クライアントID
   const SCOPE = 'https://www.googleapis.com/auth/drive.file'; // このアプリが作ったファイルだけ触れる
   const FOLDER = '実測帳データ';
   const TRACK = new Set(['sites', 'positions', 'photos', 'files']);
