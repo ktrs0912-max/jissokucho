@@ -34,6 +34,10 @@ button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px soli
 .list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .list li button{width:100%;justify-content:space-between;text-align:left;min-height:56px;font-weight:700}
 .list li button span{font-weight:400;color:var(--muted);font-size:12px}
+.syncbanner{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;justify-content:space-between;padding:calc(env(safe-area-inset-top,0px) + 6px) 12px 6px;background:var(--warnbg);color:var(--warn);font-size:13px;font-weight:700}
+.syncbanner[hidden]{display:none}
+#syncInfo.ok{color:var(--accent)}
+#syncInfo.err{color:var(--red);font-weight:700}
 .backup{margin-top:16px;border-top:1px solid var(--line);padding-top:16px}
 .backup h2{font-size:15px;margin:0}
 #backupInfo.warn{color:var(--warn);font-weight:700}

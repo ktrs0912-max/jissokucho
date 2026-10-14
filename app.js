@@ -697,7 +697,7 @@ async function savePendingPhoto(floor) {
 $('#floorCancel').onclick = () => { pendingPhoto = null; $('#floorDlg').close(); toast('写真を保存しませんでした'); };
 $('#photoFloor').onchange = async e => {
   if (!viewing) return;
-  viewing.floor = e.target.value || null;
+  viewing.floor = e.target.value || null; viewing.updatedAt = new Date().toISOString();
   await Store.put('photos', viewing);
   $('#photoCap').textContent = `${S.pos.name}　${photoLabel(viewing)}　${new Date(viewing.createdAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
   renderPhotos(); toast(`${photoLabel(viewing)} に変えました`);
@@ -706,7 +706,7 @@ let viewing = null, viewUrl = null;
 /* 写真への書き込み（道具の中身は annot.js）。写真の幅を1とした割合で ph.sketch に保存 */
 const PH = { on: false, nw: 1, nh: 1, id: null };
 const phSvg = $('#photoSvg'), phWrap = $('#photoWrap');
-async function savePhotoSketch() { if (viewing) { await Store.put('photos', viewing); renderPhotos(); } }
+async function savePhotoSketch() { if (viewing) { viewing.updatedAt = new Date().toISOString(); await Store.put('photos', viewing); renderPhotos(); } }
 const photoAnnot = new Annotator({
   items: () => (viewing.sketch ??= []),
   peek: () => viewing?.sketch || [],
@@ -1042,6 +1042,54 @@ $('#restoreIn').onchange = async e => {
     toast(`現場${data.sites.length}件を戻しました`); renderHome();
   } catch (err) { toast('戻せませんでした：' + (err.message || err)); }
 };
+
+/* ---------- ドライブと同期（中身は sync.js） ---------- */
+function renderSync(st = Sync.state(), msg) {
+  const info = $('#syncInfo'), last = st.last ? new Date(st.last).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
+  info.classList.toggle('err', !!st.error); info.classList.toggle('ok', st.connected && !st.error);
+  info.textContent = !st.configured ? 'まだ使えません（Googleの設定待ち）'
+    : st.error ? st.error
+    : st.running ? (msg || '同期中…')
+    : st.connected ? `つながっています。最後の同期：${last ?? 'まだ'}`
+    : st.wasOn ? `つなぎ直しが必要です。最後の同期：${last ?? 'まだ'}`
+    : 'まだつないでいません';
+  $('#syncConnect').hidden = st.connected; $('#syncConnect').textContent = st.wasOn ? 'つなぎ直す' : 'ドライブとつなぐ';
+  $('#syncConnect').disabled = !st.configured;
+  $('#syncNowBtn').hidden = !st.connected; $('#syncNowBtn').disabled = st.running;
+  $('#syncOff').hidden = !st.wasOn;
+  $('#syncBanner').hidden = !(st.configured && st.wasOn && !st.connected);
+}
+async function doConnect() {
+  try { await Sync.connect(); toast('ドライブとつながりました'); }
+  catch (err) { toast(err.message || String(err)); }
+  renderSync();
+}
+$('#syncConnect').onclick = doConnect;
+$('#syncReconnect').onclick = doConnect;
+$('#syncNowBtn').onclick = () => Sync.syncNow();
+$('#syncOff').onclick = async () => {
+  if (!await ask('ドライブとつなぐのをやめます。このスマホのデータはそのまま残ります。')) return;
+  Sync.disconnect(); renderSync();
+};
+// 他の端末の変更が届いたら、今の画面を新しい中身で描き直す（入力中は邪魔しない）
+async function applyRemote() {
+  if (!$('#vHome').hidden) { renderHome(); return; }
+  if (!S.site) return;
+  const fresh = (await Store.all('sites')).find(s => s.id === S.site.id);
+  if (!fresh) { toast('この現場は別の端末で削除されました'); history.back(); return; }
+  if (!$('#vSite').hidden) { S.site = fresh; renderSite(); return; }
+  if ($('#vDraw').hidden || saveTimer || $('#grid').contains(document.activeElement) || drawAnnot.g) return;
+  S.site = fresh; S.drawing = fresh.drawings.find(d => d.id === S.drawing?.id) || S.drawing;
+  S.positions = (await Store.byIndex('positions', 'drawing', S.drawing.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  S.pos = S.positions.find(p => p.id === S.pos?.id) || S.positions.find(p => p.page === S.page) || null;
+  renderChips(); renderPos(); drawMarks();
+}
+Sync.onChange(st => {
+  renderSync(st, st.msg);
+  if (st.pulled) { toast('他の端末の変更を取り込みました'); applyRemote(); }
+});
+renderSync();
+if (Sync.connected()) Sync.syncNow();
 
 /* ---------- 起動 ---------- */
 history.replaceState({ view: 'home' }, '');

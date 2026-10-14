@@ -14,6 +14,12 @@
 </head>
 <body>
 
+<!-- ドライブとの同期が切れた時のお知らせ -->
+<div id="syncBanner" class="syncbanner" hidden>
+  <span>ドライブとの同期が止まっています</span>
+  <button id="syncReconnect" type="button" class="sm">つなぎ直す</button>
+</div>
+
 <!-- ホーム：現場一覧 -->
 <section id="vHome" class="view">
   <header class="top">
@@ -27,7 +33,17 @@
     <ul id="siteList" class="list"></ul>
     <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
     <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
-    <p class="note small">アプリの版：<span id="appVer">v22</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v23</span></p>
+    <section class="backup stack">
+      <h2>ドライブと同期</h2>
+      <p id="syncInfo" class="note"></p>
+      <div class="row wrap">
+        <button id="syncConnect" type="button" class="primary">ドライブとつなぐ</button>
+        <button id="syncNowBtn" type="button" hidden>今すぐ同期</button>
+        <button id="syncOff" type="button" hidden>つなぐのをやめる</button>
+      </div>
+      <p class="note small">つなぐと、どのスマホ・パソコンで開いても同じ現場・実測値・図面・写真が見られます。sato.sk.1222 のドライブの「実測帳データ」フォルダに保存されます。安全のため1時間ごとにつなぎ直しが必要です。</p>
+    </section>
     <section class="backup stack">
       <h2>バックアップ</h2>
       <p id="backupInfo" class="note"></p>
@@ -221,6 +237,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="store.js"></script>
+<script src="sync.js"></script>
 <script src="annot.js"></script>
 <script src="app.js"></script>
 </body>
