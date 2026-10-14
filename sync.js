@@ -9,7 +9,7 @@ const Sync = (() => {
   const SCOPE = 'https://www.googleapis.com/auth/drive.file'; // このアプリが作ったファイルだけ触れる
   const FOLDER = '実測帳データ';
   const TRACK = new Set(['sites', 'positions', 'photos', 'files']);
-  const K = { tok: 'jissoku.sync.tok', on: 'jissoku.sync.on', last: 'jissoku.sync.last', tombs: 'jissoku.sync.tombs', folder: 'jissoku.sync.folder' };
+  const K = { email: 'jissoku.sync.email', tok: 'jissoku.sync.tok', on: 'jissoku.sync.on', last: 'jissoku.sync.last', tombs: 'jissoku.sync.tombs', folder: 'jissoku.sync.folder' };
   const LS = {
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
@@ -39,12 +39,13 @@ const Sync = (() => {
       s.onload = res; s.onerror = () => rej(new Error('Googleにつなげませんでした。電波を確認してください')); document.head.append(s);
     });
   }
-  async function connect() {
+  async function connect(silent) {
     if (!configured()) throw new Error('まだ準備中です（Googleの設定待ち）');
     await loadGis();
     await new Promise((res, rej) => {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID, scope: SCOPE,
+        hint: LS.get(K.email) || undefined, // 前に使ったアカウントを自動で選ぶ
         callback: r => {
           if (r.error) return rej(new Error('許可されませんでした'));
           token = r.access_token; tokenExp = Date.now() + (Number(r.expires_in || 3600) - 60) * 1000;
@@ -52,10 +53,25 @@ const Sync = (() => {
         },
         error_callback: e => rej(new Error(e?.type === 'popup_closed' ? 'ログイン画面が閉じられました' : 'Googleにつなげませんでした')),
       });
-      client.requestAccessToken({ prompt: wasOn() ? '' : 'consent' });
+      client.requestAccessToken({ prompt: silent || wasOn() ? '' : 'consent' });
     });
-    state.error = null; emit(); await syncNow();
+    state.error = null; emit();
+    if (!LS.get(K.email)) { // 次から自動で選べるように、つないだアカウントを覚える
+      try { const u = await (await api('about?fields=user(emailAddress)')).json(); if (u.user?.emailAddress) LS.set(K.email, u.user.emailAddress); } catch (e) {}
+    }
+    await syncNow();
   }
+  // 切れていたら（または切れる5分前なら）、次に画面をタップした時に自動でつなぎ直す。
+  // タップがきっかけでないとGoogleの小さな画面が開けないため
+  let reconnecting = false, lastTry = 0;
+  document.addEventListener('click', e => {
+    if (!configured() || !wasOn() || reconnecting) return;
+    if (e.target.closest?.('#syncConnect,#syncReconnect,#syncOff')) return; // つなぐボタン自体は別で処理
+    if (token && tokenExp - Date.now() > 5 * 60e3) return;
+    if (Date.now() - lastTry < 30e3) return; // うまくいかない時に何度も開かない
+    reconnecting = true; lastTry = Date.now();
+    connect(true).catch(() => { state.error = null; emit(); }).finally(() => { reconnecting = false; });
+  }, true);
   function disconnect() {
     try { if (token) google?.accounts?.oauth2?.revoke?.(token, () => {}); } catch (e) {}
     token = null; tokenExp = 0; LS.set(K.tok, null); LS.set(K.on, false); emit();

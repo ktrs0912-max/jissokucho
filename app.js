@@ -1051,7 +1051,7 @@ function renderSync(st = Sync.state(), msg) {
     : st.error ? st.error
     : st.running ? (msg || '同期中…')
     : st.connected ? `つながっています。最後の同期：${last ?? 'まだ'}`
-    : st.wasOn ? `つなぎ直しが必要です。最後の同期：${last ?? 'まだ'}`
+    : st.wasOn ? `一時的に切れています。画面をタップすると自動でつなぎ直します。最後の同期：${last ?? 'まだ'}`
     : 'まだつないでいません';
   $('#syncConnect').hidden = st.connected; $('#syncConnect').textContent = st.wasOn ? 'つなぎ直す' : 'ドライブとつなぐ';
   $('#syncConnect').disabled = !st.configured;
