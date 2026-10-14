@@ -21,14 +21,19 @@ const Sync = (() => {
   const rawPut = Store.put, rawDel = Store.del;
   Store.put = async (s, v) => { const r = await rawPut(s, v); if (TRACK.has(s)) changed(); return r; };
   Store.del = async (s, id) => { const r = await rawDel(s, id); if (TRACK.has(s)) { const t = LS.get(K.tombs) || {}; t[id] = new Date().toISOString(); LS.set(K.tombs, t); changed(); } return r; };
-  function changed() { if (connected()) schedule(4000); }
+  function changed() { if (!wasOn()) return; pending = true; if (connected()) schedule(4000); else emit(); }
+  // 電波が戻ったらすぐ同期（1時間を過ぎて切れていたら、次のタップで自動つなぎ直し→同期）
+  window.addEventListener('online', () => { state.netDown = false; emit(); if (connected()) syncNow(); });
+  window.addEventListener('offline', () => emit());
   function schedule(ms) { clearTimeout(timer); timer = setTimeout(() => syncNow(), ms); }
 
   // ---- 状態 ----
   const configured = () => !!CLIENT_ID;
   const wasOn = () => !!LS.get(K.on);
   const connected = () => wasOn() && !!token && Date.now() < tokenExp;
-  const state = () => ({ configured: configured(), wasOn: wasOn(), connected: connected(), running, last: LS.get(K.last), error: state.error || null });
+  const offline = () => navigator.onLine === false;
+  let pending = false; // 電波がない間に書き換えた物がある
+  const state = () => ({ configured: configured(), wasOn: wasOn(), connected: connected(), running, last: LS.get(K.last), error: state.error || null, offline: offline() || !!state.netDown, pending });
   function emit(extra) { listeners.forEach(f => { try { f({ ...state(), ...extra }); } catch (e) {} }); }
 
   // ---- Googleへのログイン（1時間ごとにつなぎ直しが必要） ----
@@ -65,7 +70,7 @@ const Sync = (() => {
   // タップがきっかけでないとGoogleの小さな画面が開けないため
   let reconnecting = false, lastTry = 0;
   document.addEventListener('click', e => {
-    if (!configured() || !wasOn() || reconnecting) return;
+    if (!configured() || !wasOn() || reconnecting || offline()) return;
     if (e.target.closest?.('#syncConnect,#syncReconnect,#syncOff')) return; // つなぐボタン自体は別で処理
     if (token && tokenExp - Date.now() > 5 * 60e3) return;
     if (Date.now() - lastTry < 30e3) return; // うまくいかない時に何度も開かない
@@ -113,7 +118,7 @@ const Sync = (() => {
   // ---- 同期の本体 ----
   const stamp = r => r?.updatedAt || r?.createdAt || '';
   async function syncNow() {
-    if (!connected()) { emit(); return; }
+    if (!connected() || offline()) { emit(); return; }
     if (running) { again = true; return; }
     running = true; emit({ msg: '同期中…' });
     let pulled = 0;
@@ -159,9 +164,10 @@ const Sync = (() => {
       const data = { app: 'jissokucho', version: 1, updatedAt: new Date().toISOString(),
         sites: await Store.all('sites'), positions: await Store.all('positions'), photos: photos.map(({ blob, ...r }) => r), tombs };
       await upload('data.json', new Blob([JSON.stringify(data)], { type: 'application/json' }), names['data.json']);
-      LS.set(K.tombs, tombs); LS.set(K.last, new Date().toISOString()); state.error = null;
+      LS.set(K.tombs, tombs); LS.set(K.last, new Date().toISOString()); state.error = null; state.netDown = false; pending = false;
     } catch (e) {
-      if (e.status === 401 || e.status === 403) { token = null; tokenExp = 0; LS.set(K.tok, null); state.error = 'つなぎ直しが必要です'; }
+      if (e.status === 401 || e.status === 403) { token = null; tokenExp = 0; LS.set(K.tok, null); state.error = null; }
+      else if (offline() || e instanceof TypeError) { state.netDown = true; state.error = null; pending = true; } // 電波がない・弱い
       else state.error = '同期できませんでした（' + (e.message || e) + '）';
     } finally {
       running = false; emit({ pulled });

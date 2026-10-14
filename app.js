@@ -1048,6 +1048,7 @@ function renderSync(st = Sync.state(), msg) {
   const info = $('#syncInfo'), last = st.last ? new Date(st.last).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
   info.classList.toggle('err', !!st.error); info.classList.toggle('ok', st.connected && !st.error);
   info.textContent = !st.configured ? 'まだ使えません（Googleの設定待ち）'
+    : st.wasOn && st.offline ? `電波がありません。電波が戻ったら自動で同期します${st.pending ? '（未送信の変更あり）' : ''}。最後の同期：${last ?? 'まだ'}`
     : st.error ? st.error
     : st.running ? (msg || '同期中…')
     : st.connected ? `つながっています。最後の同期：${last ?? 'まだ'}`
@@ -1057,7 +1058,7 @@ function renderSync(st = Sync.state(), msg) {
   $('#syncConnect').disabled = !st.configured;
   $('#syncNowBtn').hidden = !st.connected; $('#syncNowBtn').disabled = st.running;
   $('#syncOff').hidden = !st.wasOn;
-  $('#syncBanner').hidden = !(st.configured && st.wasOn && !st.connected);
+  $('#syncBanner').hidden = !(st.configured && st.wasOn && !st.connected && !st.offline);
 }
 async function doConnect() {
   try { await Sync.connect(); toast('ドライブとつながりました'); }
