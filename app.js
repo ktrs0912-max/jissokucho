@@ -994,7 +994,8 @@ $('#xlsxBtn').onclick = async () => {
       try {
         const r = await Sync.saveExport(name, xblob);
         $('#savedName').textContent = name + (r.overwritten ? '（同じ名前のファイルを上書き）' : '');
-        $('#savedLink').href = r.url; $('#savedDlg').showModal();
+        $('#savedLink').href = r.url; $('#savedAcct').textContent = Sync.email() || 'つないだアカウント';
+        $('#savedDlg').showModal();
         return;
       } catch (err) { toast('ドライブに保存できなかったので、ダウンロードに保存します'); }
     }
@@ -1065,7 +1066,7 @@ function renderSync(st = Sync.state(), msg) {
     : st.wasOn && st.offline ? `電波がありません。電波が戻ったら自動で同期します${st.pending ? '（未送信の変更あり）' : ''}。最後の同期：${last ?? 'まだ'}`
     : st.error ? st.error
     : st.running ? (msg || '同期中…')
-    : st.connected ? `つながっています。最後の同期：${last ?? 'まだ'}`
+    : st.connected ? `つながっています${Sync.email() ? `（${Sync.email()}）` : ''}。最後の同期：${last ?? 'まだ'}`
     : st.wasOn ? `一時的に切れています。画面をタップすると自動でつなぎ直します。最後の同期：${last ?? 'まだ'}`
     : 'まだつないでいません';
   $('#syncConnect').hidden = st.connected; $('#syncConnect').textContent = st.wasOn ? 'つなぎ直す' : 'ドライブとつなぐ';

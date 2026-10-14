@@ -33,7 +33,7 @@
     <ul id="siteList" class="list"></ul>
     <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
     <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
-    <p class="note small">アプリの版：<span id="appVer">v27</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v28</span></p>
     <section class="backup stack">
       <h2>ドライブと同期</h2>
       <p id="syncInfo" class="note"></p>
@@ -42,7 +42,7 @@
         <button id="syncNowBtn" type="button" hidden>今すぐ同期</button>
         <button id="syncOff" type="button" hidden>つなぐのをやめる</button>
       </div>
-      <p class="note small">つなぐと、どのスマホ・パソコンで開いても同じ現場・実測値・図面・写真が見られます。sato.sk.1222 のドライブの「実測帳データ」フォルダに保存されます。安全のため1時間ごとに切れますが、画面をタップすると自動でつなぎ直します。</p>
+      <p class="note small">つなぐと、どのスマホ・パソコンで開いても同じ現場・実測値・図面・写真が見られます。つないだGoogleアカウントのドライブの「実測帳データ」フォルダに保存されます。安全のため1時間ごとに切れますが、画面をタップすると自動でつなぎ直します。</p>
     </section>
     <section class="backup stack">
       <h2>バックアップ</h2>
@@ -190,7 +190,7 @@
 <dialog id="savedDlg">
   <div class="stack">
     <h2>ドライブに保存しました</h2>
-    <p class="note">sato.sk.1222 のドライブの「実測帳データ ＞ Excel出力」に入っています。</p>
+    <p class="note"><span id="savedAcct">つないだアカウント</span>のドライブの「実測帳データ ＞ Excel出力」に入っています。</p>
     <p id="savedName" style="margin:0;font-weight:700;word-break:break-all"></p>
     <div class="row wrap">
       <a id="savedLink" class="filebtn primary" href="#" target="_blank" rel="noopener">ドライブで開く</a>

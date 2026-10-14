@@ -79,7 +79,7 @@ const Sync = (() => {
   }, true);
   function disconnect() {
     try { if (token) google?.accounts?.oauth2?.revoke?.(token, () => {}); } catch (e) {}
-    token = null; tokenExp = 0; LS.set(K.tok, null); LS.set(K.on, false); emit();
+    token = null; tokenExp = 0; LS.set(K.tok, null); LS.set(K.on, false); LS.set(K.email, null); LS.set(K.folder, null); folderId = null; outFolderId = null; emit(); // 別のアカウントでつなぎ直せるように
   }
 
   // ---- ドライブの操作 ----
@@ -201,6 +201,7 @@ const Sync = (() => {
     return { id, url: `https://drive.google.com/file/d/${id}/view`, overwritten: !!same?.length };
   }
 
-  return { connect, disconnect, syncNow, state, saveExport, onChange: f => listeners.push(f), connected, wasOn, configured,
+  const email = () => LS.get(K.email) || '';
+  return { connect, disconnect, syncNow, state, saveExport, email, onChange: f => listeners.push(f), connected, wasOn, configured,
     _test: { setToken(t) { token = t; tokenExp = Date.now() + 3600e3; LS.set(K.on, true); folderId = null; } } }; // 動作確認用
 })();
