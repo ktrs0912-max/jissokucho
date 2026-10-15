@@ -49,7 +49,8 @@ class Annotator {
       ${PEN_COLORS.map(([n, c]) => `<button type="button" class="${b} pc" data-c="${c}" aria-label="${n}"><i style="background:${c}"></i></button>`).join('')}
       <button type="button" class="${b}" data-act="w"></button>
       <button type="button" class="${b}" data-act="flip"></button>
-      <button type="button" class="${b}" data-act="undo">1つ戻す</button>
+      <button type="button" class="${b}" data-act="undo">↶ 1つ戻す</button>
+      <button type="button" class="${b}" data-act="redo">↷ 1つ進む</button>
       <span class="selacts">
         <button type="button" class="${b}" data-act="copy">コピー</button>
         <button type="button" class="${b}" data-act="paste">貼り付け</button>
@@ -61,6 +62,7 @@ class Annotator {
     bar.querySelector('[data-act=w]').onclick = () => this.toggleW();
     bar.querySelector('[data-act=flip]').onclick = () => { this.flip = !this.flip; this.syncBar(); };
     bar.querySelector('[data-act=undo]').onclick = () => this.undo();
+    bar.querySelector('[data-act=redo]').onclick = () => this.redo();
     bar.querySelector('[data-act=copy]').onclick = () => this.copy();
     bar.querySelector('[data-act=paste]').onclick = () => this.paste();
     bar.querySelector('[data-act=del]').onclick = () => this.delSel();
@@ -79,6 +81,26 @@ class Annotator {
     bar.querySelector('[data-act=copy]').disabled = !this.sel.length;
     bar.querySelector('[data-act=del]').disabled = !this.sel.length;
     bar.querySelector('[data-act=paste]').disabled = !annotClipboard;
+    const h = this.hist();
+    bar.querySelector('[data-act=undo]').disabled = !h.undo.length;
+    bar.querySelector('[data-act=redo]').disabled = !h.redo.length;
+  }
+  // ---- 戻す・進む：書き換える前の状態を丸ごと記録しておく（ページ・写真ごとに別々） ----
+  hist() {
+    const key = this.o.peek(); this._h ??= new WeakMap();
+    if (!this._h.has(key)) this._h.set(key, { undo: [], redo: [] });
+    return this._h.get(key);
+  }
+  record(snap) {
+    this.o.items(); // まだ一覧が無ければ作っておく（記録先をそろえるため）
+    const h = this.hist(); h.undo.push(snap || this.o.peek().map(clone)); h.redo = [];
+    if (h.undo.length > 50) h.undo.shift();
+  }
+  restore(from, to) {
+    const h = this.hist(); if (!h[from].length) { toast(from === 'undo' ? '戻すものがありません' : '進むものがありません'); return; }
+    const l = this.o.items(); h[to].push(l.map(clone));
+    l.splice(0, l.length, ...h[from].pop());
+    this.sel = []; this.o.save(); this.syncBar(); this.o.render();
   }
   setTool(t, say) {
     this.tool = t; this.cancel(); if (t !== 'select') this.sel = [];
@@ -87,12 +109,13 @@ class Annotator {
   }
   setColor(c) {
     this.color = c;
-    if (this.sel.length) { this.sel.forEach(it => it.c = c); this.o.save(); this.o.render(); }
+    if (this.sel.length) { this.record(); this.sel.forEach(it => it.c = c); this.o.save(); this.o.render(); }
     this.syncBar();
   }
   toggleW() {
     this.w = this.w === '細' ? '太' : '細';
     if (this.sel.length) { // 選んでいる物の太さ・大きさも変える
+      this.record();
       this.sel.forEach(it => { if (it.t === 'text') it.f = TEXT_F[this.w] * (this.o.textF || 1); else it.w = PEN_W[this.w]; });
       this.o.save(); this.o.render();
     }
@@ -171,10 +194,10 @@ class Annotator {
       const hit = this.hit(p, 14);
       if (hit) {
         if (!this.sel.includes(hit)) this.sel = [hit];
-        this.g = { type: 'move', s, start: p, orig: this.sel.map(clone), moved: false };
+        this.g = { type: 'move', s, start: p, orig: this.sel.map(clone), moved: false, snap: this.o.peek().map(clone) };
       } else { this.g = { type: 'rect', s, start: p }; this.rect = [p, p]; }
     } else if (this.tool === 'erase') {
-      this.g = { type: 'erase', changed: false }; this.eraseAt(p);
+      this.g = { type: 'erase', changed: false, snap: this.o.peek().map(clone) }; this.eraseAt(p);
     }
     this.syncBar(); this.o.render();
   }
@@ -213,15 +236,16 @@ class Annotator {
       const { W, H } = this.o.size(), pts = this.cur.pts, a = pts[1] || pts[0], b = pts[2] || pts[0];
       if (pts.length === 4 && Math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H) * this.o.k() >= 10) {
         this.cur.pts = pts.map(q => [r4(q[0]), r4(q[1])]);
-        this.o.items().push(this.cur); this.o.save();
+        this.record(); this.o.items().push(this.cur); this.o.save();
       }
       this.cur = null;
     } else if (g.type === 'line' && this.cur) {
       this.cur.pts = this.cur.pts.map(q => [r4(q[0]), r4(q[1])]);
-      this.o.items().push(this.cur); this.cur = null; this.o.save();
+      this.record(); this.o.items().push(this.cur); this.cur = null; this.o.save();
     } else if (g.type === 'tap' && !g.moved) {
       this.openText(g.p);
     } else if (g.type === 'move' && g.moved) {
+      this.record(g.snap);
       this.sel.forEach(it => { if (it.t === 'text') { it.x = r4(it.x); it.y = r4(it.y); } else it.pts = it.pts.map(q => [r4(q[0]), r4(q[1])]); });
       this.o.save();
     } else if (g.type === 'rect') {
@@ -232,7 +256,7 @@ class Annotator {
       this.rect = null;
       if (this.sel.length) toast(`${this.sel.length}個選びました。ドラッグで移動できます`);
     } else if (g.type === 'erase') {
-      this.eraser = null; if (g.changed) this.o.save();
+      this.eraser = null; if (g.changed) { this.record(g.snap); this.o.save(); }
     }
     this.syncBar(); this.o.render();
   }
@@ -240,7 +264,7 @@ class Annotator {
   cancel() {
     const g = this.g; this.g = null; if (g) clearTimeout(g.timer);
     if (g?.type === 'move') this.sel.forEach((it, i) => Object.assign(it, clone(g.orig[i])));
-    if (g?.type === 'erase' && g.changed) this.o.save();
+    if (g?.type === 'erase' && g.changed) { this.record(g.snap); this.o.save(); }
     this.cur = null; this.rect = null; this.eraser = null;
   }
   eraseAt(p) {
@@ -251,8 +275,8 @@ class Annotator {
   openText(p) {
     const edit = this.hit(p, 8); const target = edit?.t === 'text' ? edit : null;
     showTextDlg(target,
-      s => { if (target) { target.s = s; target.c = this.color; } else this.o.items().push({ t: 'text', x: r4(p[0]), y: r4(p[1]), s, c: this.color, f: TEXT_F[this.w] * (this.o.textF || 1) }); this.o.save(); this.o.render(); },
-      () => { const l = this.o.items(), i = l.indexOf(target); if (i >= 0) l.splice(i, 1); this.o.save(); this.o.render(); toast('文字を消しました'); },
+      s => { this.record(); if (target) { target.s = s; target.c = this.color; } else this.o.items().push({ t: 'text', x: r4(p[0]), y: r4(p[1]), s, c: this.color, f: TEXT_F[this.w] * (this.o.textF || 1) }); this.o.save(); this.o.render(); },
+      () => { this.record(); const l = this.o.items(), i = l.indexOf(target); if (i >= 0) l.splice(i, 1); this.o.save(); this.o.render(); toast('文字を消しました'); },
       () => this.setTool('line')); // 文字を置いたら線に戻す
   }
   // ---- 選択した物の操作 ----
@@ -261,23 +285,23 @@ class Annotator {
     if (!annotClipboard) return;
     const items = annotClipboard.map(clone), d = 0.03;
     items.forEach(it => { if (it.t === 'text') { it.x = r4(it.x + d); it.y = r4(it.y + d); } else it.pts = it.pts.map(q => [r4(q[0] + d), r4(q[1] + d)]); });
-    this.o.items().push(...items); this.sel = items;
+    this.record(); this.o.items().push(...items); this.sel = items;
     if (this.tool !== 'select') this.tool = 'select';
     this.o.save(); this.syncBar(); this.o.render();
     toast('貼り付けました。ドラッグで好きな場所へ動かせます');
   }
   delSel() {
     if (!this.sel.length) return;
+    this.record();
     const l = this.o.items(); this.sel.forEach(it => { const i = l.indexOf(it); if (i >= 0) l.splice(i, 1); });
     toast(`${this.sel.length}個消しました`); this.sel = []; this.o.save(); this.syncBar(); this.o.render();
   }
-  undo() {
-    const l = this.o.peek(); if (!l.length) { toast('戻すものがありません'); return; }
-    const it = l.pop(); this.sel = this.sel.filter(x => x !== it); this.o.save(); this.syncBar(); this.o.render();
-  }
+  undo() { this.restore('undo', 'redo'); }
+  redo() { this.restore('redo', 'undo'); }
   clearSel() { this.cancel(); this.sel = []; this.syncBar(); }
   // ---- 画面に描く（書いた物＋書いている途中の線＋選択枠など） ----
   svg() {
+    this.syncBar(); // ページや写真が変わった時に「戻す・進む」のボタンの状態をそろえる
     const { W, H } = this.o.size(), k = this.o.k(), lw = 1.5 / k;
     let h = this.o.peek().map(it => itemSvg(it, W, H)).join('');
     if (this.cur) h += itemSvg(this.cur, W, H);

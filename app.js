@@ -214,8 +214,8 @@ const drawAnnot = new Annotator({
   extra: [{ label: '全部消す', run: async () => {
     const list = S.drawing?.sketch?.[S.page];
     if (!list?.length) { toast('消すものがありません'); return; }
-    if (!await ask(`このページに書いた線・文字（${list.length}個）を全部消します。元に戻せません。`)) return;
-    S.drawing.sketch[S.page] = []; drawAnnot.clearSel(); saveSite(); drawMarks(); toast('全部消しました');
+    if (!await ask(`このページに書いた線・文字（${list.length}個）を全部消します。`)) return;
+    drawAnnot.record(); list.splice(0); drawAnnot.clearSel(); saveSite(); drawMarks(); toast('全部消しました（「1つ戻す」で元に戻せます）');
   } }],
 });
 function setPen(on) {
