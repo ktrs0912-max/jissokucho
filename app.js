@@ -460,6 +460,104 @@ $('#importIn').onchange = async e => {
   renderChips(); renderPos(); drawMarks();
   toast(`符号を${added}件追加しました` + (skipped ? `（${skipped}件は登録済みのため省略）` : ''));
 };
+/* ---------- 図面から符号をさがす（PDFの文字から。スキャン図面は不可） ---------- */
+// 「BT」の下に「1」のように上下に並んだ文字の組や、「KT-2」のような書き方を符号として拾う
+const SYM_SKIP = new Set(['X', 'Y', 'FL', 'SL', 'GL', 'CL', 'W', 'H', 'R', 'M', 'P', 'TW', 'DW', 'PW', 'L', 'S', 'K', 'A', 'B', 'C', 'D', 'N', 'E', 'NO', 'MM', 'AL', 'SUS', 'RTB', 'PTW', 'PTH', 'ALC', 'RC', 'FAX', 'TEL']);
+function findSymbols(pages) {
+  const found = new Map(); // 符号 → Map(ページ→回数)
+  const stacked = new Set(), dashed = new Map(); // 上下に並んだ形の文字／「KT-2」形の候補
+  const add = (map, name, page) => {
+    if (!map.has(name)) map.set(name, new Map());
+    const m = map.get(name); m.set(page, (m.get(page) || 0) + 1);
+  };
+  for (const { page, items } of pages) {
+    const letters = items.filter(t => /^[A-Z]{1,3}$/.test(t.s) && !SYM_SKIP.has(t.s));
+    const nums = items.filter(t => /^\d{1,2}$/.test(t.s));
+    for (const L of letters) {
+      const lc = L.x + L.w / 2;
+      const n = nums.find(N => { const dy = L.y - N.y, nc = N.x + N.w / 2; return Math.abs(nc - lc) < L.h * 1.2 && dy > L.h * 0.3 && dy < L.h * 2.2; });
+      if (n) { add(found, `${L.s}-${+n.s}`, page); stacked.add(L.s); }
+    }
+    for (const t of items) {
+      const m = t.s.match(/^([A-Z]{1,3})\s*[-‐ー－]\s*(\d{1,2})$/);
+      if (m && !SYM_SKIP.has(m[1])) add(dashed, `${m[1]}-${+m[2]}`, page);
+    }
+  }
+  // 「KT-2」形は、上下形の符号が無い図面か、同じ文字の符号がある時だけ採用（部品の型番 PKS-50 などを除くため）
+  dashed.forEach((pg, name) => {
+    if (stacked.size && !stacked.has(name.split('-')[0])) return;
+    pg.forEach((c, p) => { if (!found.has(name)) found.set(name, new Map()); found.get(name).set(p, (found.get(name).get(p) || 0) + c); });
+  });
+  // 割り当てるページ：その符号が何度も出てきて、ほかの符号が少ないページ（その符号の立・平面図）を選ぶ
+  const perPage = new Map();
+  found.forEach(pg => pg.forEach((_, p) => perPage.set(p, (perPage.get(p) || 0) + 1)));
+  return [...found.entries()].map(([name, pg]) => {
+    const score = p => pg.get(p) / perPage.get(p);
+    const best = [...pg.keys()].sort((a, b) => score(b) - score(a) || a - b)[0];
+    return { name, page: best, pages: [...pg.keys()].sort((a, b) => a - b) };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
+}
+// そのページの「2～7F」「3F」のような書き方から階の範囲を推測する
+function guessFloors(text) {
+  const t = text.normalize('NFKC');
+  // 「2～7F」のような範囲（前後が英数字の型番 PS50FAA などは除く）
+  const m = t.match(/(?<![A-Z0-9])(\d{1,2})\s*[～~〜\-・]\s*(\d{1,2})\s*[F階](?![A-Z])/i);
+  if (m && +m[1] <= +m[2] && +m[2] <= 60) return [+m[1], +m[2]];
+  // 「1F」「5F」…がいくつも書いてあれば、その一番下〜一番上
+  const fl = [...t.matchAll(/(?<![A-Z0-9])(\d{1,2})\s*[F階](?![A-Z])/gi)].map(x => +x[1]).filter(n => n >= 1 && n <= 60);
+  return fl.length ? [Math.min(...fl), Math.max(...fl)] : [1, 1];
+}
+async function pdfPagesText(d, onProgress) {
+  const doc = await getPdf(d), out = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    onProgress?.(p, doc.numPages);
+    const tc = await (await doc.getPage(p)).getTextContent();
+    const items = tc.items.filter(i => i.str && i.str.trim()).map(i => ({
+      s: i.str.trim().normalize('NFKC').toUpperCase(), x: i.transform[4], y: i.transform[5],
+      h: Math.hypot(i.transform[2], i.transform[3]) || i.height || 10, w: i.width || 0,
+    }));
+    out.push({ page: p, items, text: tc.items.map(i => i.str).join(' ') });
+  }
+  return out;
+}
+let symFound = [];
+$('#findSym').onclick = async () => {
+  const d = S.drawing, msg = $('#symMsg'), list = $('#symList');
+  list.innerHTML = ''; $('#symAdd').hidden = true; $('#symDlg').showModal();
+  if (d.type !== 'pdf') { msg.textContent = '写真の図面からは符号をさがせません。「＋ 位置」で追加してください。'; return; }
+  try {
+    const pages = await pdfPagesText(d, (p, n) => msg.textContent = `図面を調べています…（${p}/${n}ページ）`);
+    if (!pages.some(p => p.items.length > 20)) { msg.textContent = 'この図面には文字のデータが入っていません（スキャンした図面のようです）。「＋ 位置」で追加してください。'; return; }
+    symFound = findSymbols(pages).map(s => ({ ...s, floors: guessFloors(pages[s.page - 1].text) }));
+    if (!symFound.length) { msg.textContent = '符号が見つかりませんでした。「＋ 位置」で追加してください。'; return; }
+    msg.textContent = `${symFound.length}個見つかりました。追加する符号を選んで、ページと階の範囲を確かめてください。`;
+    symFound.forEach((s, i) => {
+      const exists = S.positions.some(p => p.name === s.name);
+      const row = document.createElement('label'); row.className = 'symrow' + (exists ? ' done' : '');
+      row.innerHTML = `<input type="checkbox" ${exists ? 'disabled' : 'checked'} data-i="${i}">
+        <span><b>${esc(s.name)}</b><br><span class="meta">${exists ? '登録済み' : `${s.page}ページに割り当て`}（出てくるページ：${s.pages.join('・')}）</span></span>
+        <span class="fl"><input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[0]}" data-f="${i}" aria-label="${esc(s.name)}の開始階">〜<input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[1]}" data-t="${i}" aria-label="${esc(s.name)}の終了階">F</span>`;
+      list.append(row);
+    });
+    $('#symAdd').hidden = false;
+  } catch (err) { msg.textContent = '図面を読めませんでした：' + (err.message || err); }
+};
+$('#symClose').onclick = () => $('#symDlg').close();
+$('#symAdd').onclick = async () => {
+  let added = 0;
+  for (const cb of $('#symList').querySelectorAll('input[type=checkbox]:checked:not(:disabled)')) {
+    const i = +cb.dataset.i, s = symFound[i];
+    const a = parseInt($(`[data-f="${i}"]`).value) || 1, z = parseInt($(`[data-t="${i}"]`).value) || a;
+    const floors = []; for (let f = Math.min(a, z); f <= Math.max(a, z); f++) floors.push(f + 'F');
+    const now = new Date().toISOString();
+    const p = { id: uid(), siteId: S.site.id, drawingId: S.drawing.id, page: s.page, name: s.name, color: COLORS[S.positions.length % COLORS.length], floors, points: [], values: {}, memo: `図面から見つけた符号（出てくるページ：${s.pages.join('・')}）`, createdAt: now, updatedAt: now };
+    await Store.put('positions', p); S.positions.push(p); added++;
+  }
+  $('#symDlg').close();
+  if (!S.pos) S.pos = S.positions.find(p => p.page === S.page) || S.positions[0] || null;
+  renderChips(); renderPos(); drawMarks();
+  toast(added ? `符号を${added}個追加しました` : '追加する符号が選ばれていません');
+};
 $('#delPos').onclick = async () => {
   if (!S.pos || !await ask(`位置「${S.pos.name}」の番号と実測値を削除します。元に戻せません。`)) return;
   clearTimeout(saveTimer); saveTimer = null;

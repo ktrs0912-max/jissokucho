@@ -148,6 +148,15 @@ tfoot td.big{color:var(--warn);font-weight:800}
   .panel{flex:0 0 40%;max-width:520px;border-left:1px solid var(--line)}
 }
 
+.symdlg{width:min(94vw,520px)}
+.symlist{display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow:auto}
+.symrow{display:grid;grid-template-columns:auto 1fr auto;gap:8px 10px;align-items:center;background:var(--surface2);border-radius:var(--r-sm);padding:10px 12px}
+.symrow input[type=checkbox]{width:22px;height:22px;accent-color:var(--accent)}
+.symrow b{font-family:var(--f-num);font-size:17px}
+.symrow .meta{font-size:12px;color:var(--muted)}
+.symrow .fl{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted)}
+.symrow .fl input{width:58px;min-height:36px;padding:4px 6px;text-align:center}
+.symrow.done{opacity:.5}
 dialog{border:0;border-radius:20px;background:var(--surface);color:var(--ink);padding:22px;width:min(92vw,400px);box-shadow:var(--shadow2)}
 dialog::backdrop{background:rgba(30,45,50,.35);backdrop-filter:blur(2px)}
 dialog h2{margin:0;font-size:17px;font-weight:800}

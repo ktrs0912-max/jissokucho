@@ -40,7 +40,7 @@
       <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
     </div>
     <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-    <p class="note small">アプリの版：<span id="appVer">v31</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v32</span></p>
     <section class="backup stack">
       <h2>ドライブと同期</h2>
       <p id="syncInfo" class="note"></p>
@@ -106,6 +106,7 @@
   <div class="posbar">
     <div id="posChips" class="chips"></div>
     <button id="addPos" type="button" class="chip add">＋ 位置</button>
+    <button id="findSym" type="button" class="chip add">図面から符号をさがす</button>
     <label for="importIn" class="chip add filebtn">符号を取り込む</label>
     <input id="importIn" type="file" hidden>
   </div>
@@ -191,6 +192,20 @@
       <button value="cancel">やめる</button>
     </div>
   </form>
+</dialog>
+
+<!-- 図面から符号をさがす -->
+<dialog id="symDlg" class="symdlg">
+  <div class="stack">
+    <h2>図面から符号をさがす</h2>
+    <p id="symMsg" class="note"></p>
+    <div id="symList" class="symlist"></div>
+    <div class="row wrap">
+      <button type="button" id="symAdd" class="primary" hidden>選んだ符号を追加</button>
+      <span class="grow"></span>
+      <button type="button" id="symClose">閉じる</button>
+    </div>
+  </div>
 </dialog>
 
 <!-- Excelをドライブに保存した後 -->
