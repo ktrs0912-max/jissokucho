@@ -1,5 +1,5 @@
 // 電波のない現場でも開けるように、アプリ本体とPDF部品をスマホに保存しておく
-const CACHE = 'jissokucho-v34';
+const CACHE = 'jissokucho-v35';
 const FONTS = 'jissokucho-fonts';
 const FILES = [
   './', 'index.html', 'style.css', 'store.js', 'sync.js', 'annot.js', 'demo.js', 'intro.html', 'app.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png',

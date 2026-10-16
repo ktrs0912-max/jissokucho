@@ -51,6 +51,13 @@ class Annotator {
       <button type="button" class="${b}" data-act="flip"></button>
       <button type="button" class="${b}" data-act="undo">↶ 1つ戻す</button>
       <button type="button" class="${b}" data-act="redo">↷ 1つ進む</button>
+      <span class="nudge">
+        <button type="button" class="${b}" data-nudge="-1,0" aria-label="左へ少し">◀</button>
+        <button type="button" class="${b}" data-nudge="0,-1" aria-label="上へ少し">▲</button>
+        <button type="button" class="${b}" data-nudge="0,1" aria-label="下へ少し">▼</button>
+        <button type="button" class="${b}" data-nudge="1,0" aria-label="右へ少し">▶</button>
+        <button type="button" class="${b}" data-act="done">調整を終える</button>
+      </span>
       <span class="selacts">
         <button type="button" class="${b}" data-act="copy">コピー</button>
         <button type="button" class="${b}" data-act="paste">貼り付け</button>
@@ -66,6 +73,8 @@ class Annotator {
     bar.querySelector('[data-act=copy]').onclick = () => this.copy();
     bar.querySelector('[data-act=paste]').onclick = () => this.paste();
     bar.querySelector('[data-act=del]').onclick = () => this.delSel();
+    bar.querySelectorAll('[data-nudge]').forEach(x => x.onclick = () => this.nudge(...x.dataset.nudge.split(',').map(Number)));
+    bar.querySelector('[data-act=done]').onclick = () => { this.edit = null; this.syncBar(); this.o.render(); };
     bar.querySelectorAll('[data-extra]').forEach(x => x.onclick = () => this.o.extra[+x.dataset.extra].run());
     this.syncBar();
   }
@@ -76,6 +85,8 @@ class Annotator {
     const t = this.tool === 'text';
     bar.querySelector('[data-act=w]').textContent = `${t ? '文字' : '線'}：${this.w === '細' ? (t ? '小' : '細') : (t ? '大' : '太')}`;
     bar.querySelector('.selacts').hidden = this.tool !== 'select';
+    if (this.edit && !this.o.peek().includes(this.edit)) this.edit = null; // 消された・戻された時
+    bar.querySelector('.nudge').hidden = !this.edit;
     const fb = bar.querySelector('[data-act=flip]');
     fb.hidden = this.tool !== 'bracket'; fb.textContent = this.flip ? '足：下・右向き' : '足：上・左向き';
     bar.querySelector('[data-act=copy]').disabled = !this.sel.length;
@@ -100,10 +111,11 @@ class Annotator {
     const h = this.hist(); if (!h[from].length) { toast(from === 'undo' ? '戻すものがありません' : '進むものがありません'); return; }
     const l = this.o.items(); h[to].push(l.map(clone));
     l.splice(0, l.length, ...h[from].pop());
-    this.sel = []; this.o.save(); this.syncBar(); this.o.render();
+    this.sel = []; this.edit = null; this.o.save(); this.syncBar(); this.o.render();
   }
   setTool(t, say) {
     this.tool = t; this.cancel(); if (t !== 'select') this.sel = [];
+    if (t !== 'select' && t !== 'bracket') this.edit = null;
     this.syncBar(); this.o.render();
     if (say) toast({ bracket: '測る範囲の端から端までなぞると、両端に足が付いたコの字になります', line: '指でなぞると線。途中で0.5秒止めると直線', text: '文字を置きたい所をタップ。置いた文字をタップすると直せます', select: '線や文字をタップで選んで、ドラッグで移動。囲むと複数選べます', erase: 'なぞった線・文字を消します' }[t]);
   }
@@ -168,6 +180,42 @@ class Annotator {
     const L = 24 / this.o.k(), ox = nx * L / W, oy = ny * L / H;
     return [[a[0] + ox, a[1] + oy], a, e, [e[0] + ox, e[1] + oy]];
   }
+  // ---- コの字の微調整 ----
+  // コの字は [足1, 端A, 端B, 足2] の4点。足の向き・長さはそのままで、端を動かして作り直す
+  isBracket(it) {
+    if (!it || it.t === 'text' || it.pts.length !== 4) return false;
+    if (it.br) return true;
+    const [l1, a, b, l2] = it.pts;
+    return Math.abs((l1[0] - a[0]) - (l2[0] - b[0])) < 1e-3 && Math.abs((l1[1] - a[1]) - (l2[1] - b[1])) < 1e-3;
+  }
+  rebuild(it, A, B) {
+    const o = [it.pts[0][0] - it.pts[1][0], it.pts[0][1] - it.pts[1][1]];
+    it.pts = [[A[0] + o[0], A[1] + o[1]], A, B, [B[0] + o[0], B[1] + o[1]]];
+  }
+  handleAt(p) { // 指の位置が、調整中のコの字の端の丸か線の上か
+    const it = this.edit; if (!it) return null;
+    const { W, H } = this.o.size(), k = this.o.k(), d = q => Math.hypot((q[0] - p[0]) * W, (q[1] - p[1]) * H) * k;
+    if (d(it.pts[1]) <= 24) return 'a';
+    if (d(it.pts[2]) <= 24) return 'b';
+    return this.hit(p, 16) === it ? 'all' : null;
+  }
+  moveEdit(orig, part, dx, dy) {
+    const it = this.edit, A0 = orig.pts[1], B0 = orig.pts[2];
+    if (part === 'all') { it.pts = orig.pts.map(q => [q[0] + dx, q[1] + dy]); return; }
+    it.pts = orig.pts.map(q => [...q]);
+    if (part === 'a') this.rebuild(it, this.snap(B0, [A0[0] + dx, A0[1] + dy]), B0);
+    else this.rebuild(it, A0, this.snap(A0, [B0[0] + dx, B0[1] + dy]));
+  }
+  nudge(sx, sy) {
+    const it = this.edit; if (!it) return;
+    const { W, H } = this.o.size(), step = 2 / this.o.k(); // 画面で約2pxずつ
+    const now = Date.now();
+    if (!(this._nudgeAt && now - this._nudgeAt < 1500 && this._nudgeItem === it)) this.record(); // 続けて押した分は1回の「戻す」にまとめる
+    this._nudgeAt = now; this._nudgeItem = it;
+    this.moveEdit(clone(it), this.editPart || 'all', sx * step / W, sy * step / H);
+    it.pts = it.pts.map(q => [r4(q[0]), r4(q[1])]);
+    this.o.save(); this.o.render();
+  }
   armStraight() {
     const g = this.g; if (!g) return;
     clearTimeout(g.timer);
@@ -182,6 +230,16 @@ class Annotator {
   // ---- 指の動き（p は割合の座標、e は元のイベント） ----
   down(p, e) {
     const s = { x: e.clientX, y: e.clientY };
+    // 調整中のコの字の端や線を触ったら、微調整（指を置いた位置に飛ばず、動かした分だけ動く）
+    if (this.edit && (this.tool === 'bracket' || this.tool === 'select')) {
+      const part = this.handleAt(p);
+      if (part) {
+        this.editPart = part;
+        this.g = { type: 'bedit', part, start: p, orig: clone(this.edit), snap: this.o.peek().map(clone), moved: false, s };
+        this.syncBar(); this.o.render(); return;
+      }
+      if (this.tool === 'bracket') { this.edit = null; this.syncBar(); this.o.render(); return; } // 何もない所をタップ＝調整を終える
+    }
     if (this.tool === 'line') {
       this.cur = { c: this.color, w: PEN_W[this.w], pts: [p] };
       this.g = { type: 'line', ax: s.x, ay: s.y, straight: false }; this.armStraight();
@@ -194,6 +252,8 @@ class Annotator {
       const hit = this.hit(p, 14);
       if (hit) {
         if (!this.sel.includes(hit)) this.sel = [hit];
+        this.edit = this.sel.length === 1 && this.isBracket(hit) ? hit : null; // コの字を選んだら微調整の丸を出す
+        if (this.edit) this.editPart = 'all';
         this.g = { type: 'move', s, start: p, orig: this.sel.map(clone), moved: false, snap: this.o.peek().map(clone) };
       } else { this.g = { type: 'rect', s, start: p }; this.rect = [p, p]; }
     } else if (this.tool === 'erase') {
@@ -213,6 +273,9 @@ class Annotator {
       }
     } else if (g.type === 'bracket') {
       this.cur.pts = this.bracketPts(g.a, p);
+    } else if (g.type === 'bedit') {
+      if (Math.hypot(e.clientX - g.s.x, e.clientY - g.s.y) > 3) g.moved = true;
+      this.moveEdit(g.orig, g.part, p[0] - g.start[0], p[1] - g.start[1]);
     } else if (g.type === 'tap') {
       if (Math.hypot(e.clientX - g.s.x, e.clientY - g.s.y) > 12) g.moved = true; return;
     } else if (g.type === 'move') {
@@ -232,11 +295,15 @@ class Annotator {
   up(p, e) {
     const g = this.g; if (!g) return;
     this.g = null; clearTimeout(g.timer);
-    if (g.type === 'bracket' && this.cur) {
+    if (g.type === 'bedit') {
+      if (g.moved) { this.record(g.snap); this.edit.pts = this.edit.pts.map(q => [r4(q[0]), r4(q[1])]); this.o.save(); }
+    } else if (g.type === 'bracket' && this.cur) {
       const { W, H } = this.o.size(), pts = this.cur.pts, a = pts[1] || pts[0], b = pts[2] || pts[0];
       if (pts.length === 4 && Math.hypot((b[0] - a[0]) * W, (b[1] - a[1]) * H) * this.o.k() >= 10) {
-        this.cur.pts = pts.map(q => [r4(q[0]), r4(q[1])]);
+        this.cur.pts = pts.map(q => [r4(q[0]), r4(q[1])]); this.cur.br = 1;
         this.record(); this.o.items().push(this.cur); this.o.save();
+        this.edit = this.cur; this.editPart = 'all'; // 引いた直後から微調整できるようにする
+        if (!this._editHint) { this._editHint = true; toast('端の丸をドラッグすると微調整できます。◀▲▼▶で少しずつ動かせます'); }
       }
       this.cur = null;
     } else if (g.type === 'line' && this.cur) {
@@ -254,6 +321,7 @@ class Annotator {
       this.sel = (x1 - x0) * W * this.o.k() < 8 ? [] // ただのタップは選択解除
         : this.o.peek().filter(it => { const [c0, d0, c1, d1] = this.bbox(it); return c0 < x1 && c1 > x0 && d0 < y1 && d1 > y0; });
       this.rect = null;
+      this.edit = this.sel.length === 1 && this.isBracket(this.sel[0]) ? this.sel[0] : null;
       if (this.sel.length) toast(`${this.sel.length}個選びました。ドラッグで移動できます`);
     } else if (g.type === 'erase') {
       this.eraser = null; if (g.changed) { this.record(g.snap); this.o.save(); }
@@ -264,6 +332,7 @@ class Annotator {
   cancel() {
     const g = this.g; this.g = null; if (g) clearTimeout(g.timer);
     if (g?.type === 'move') this.sel.forEach((it, i) => Object.assign(it, clone(g.orig[i])));
+    if (g?.type === 'bedit' && this.edit) Object.assign(this.edit, clone(g.orig));
     if (g?.type === 'erase' && g.changed) { this.record(g.snap); this.o.save(); }
     this.cur = null; this.rect = null; this.eraser = null;
   }
@@ -298,7 +367,7 @@ class Annotator {
   }
   undo() { this.restore('undo', 'redo'); }
   redo() { this.restore('redo', 'undo'); }
-  clearSel() { this.cancel(); this.sel = []; this.syncBar(); }
+  clearSel() { this.cancel(); this.sel = []; this.edit = null; this.syncBar(); }
   // ---- 画面に描く（書いた物＋書いている途中の線＋選択枠など） ----
   svg() {
     this.syncBar(); // ページや写真が変わった時に「戻す・進む」のボタンの状態をそろえる
@@ -307,7 +376,13 @@ class Annotator {
     if (this.cur) h += itemSvg(this.cur, W, H);
     this.sel.forEach(it => { const [a, b, c, d] = this.bbox(it), pad = 4 / k; h += `<rect x="${a * W - pad}" y="${b * H - pad}" width="${(c - a) * W + pad * 2}" height="${(d - b) * H + pad * 2}" fill="rgba(31,95,209,.06)" stroke="#1f5fd1" stroke-width="${lw}" stroke-dasharray="${4 / k} ${3 / k}"/>`; });
     if (this.rect) { const [a, b] = this.rect; h += `<rect x="${Math.min(a[0], b[0]) * W}" y="${Math.min(a[1], b[1]) * H}" width="${Math.abs(b[0] - a[0]) * W}" height="${Math.abs(b[1] - a[1]) * H}" fill="rgba(31,95,209,.08)" stroke="#1f5fd1" stroke-width="${lw}" stroke-dasharray="${4 / k} ${3 / k}"/>`; }
-    if (this.eraser) h += `<circle cx="${this.eraser[0] * W}" cy="${this.eraser[1] * H}" r="${14 / k}" fill="rgba(255,255,255,.35)" stroke="#555" stroke-width="${lw}"/>`;
+    if (this.edit && this.o.peek().includes(this.edit)) { // 微調整の丸（選んでいる部分は塗りつぶし）
+      [['a', this.edit.pts[1]], ['b', this.edit.pts[2]]].forEach(([part, q]) => {
+        const on = this.editPart === part;
+        h += `<circle cx="${q[0] * W}" cy="${q[1] * H}" r="${9 / k}" fill="${on ? '#2a8c80' : '#fff'}" stroke="#2a8c80" stroke-width="${2.5 / k}"/>`;
+      });
+    }
+    if (this.eraser) h +=`<circle cx="${this.eraser[0] * W}" cy="${this.eraser[1] * H}" r="${14 / k}" fill="rgba(255,255,255,.35)" stroke="#555" stroke-width="${lw}"/>`;
     return h;
   }
 }

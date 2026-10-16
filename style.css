@@ -86,8 +86,9 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.filebtn:focus-v
 .pc{min-width:38px;padding:4px 8px;border-radius:50%!important;width:38px}
 .pc i{display:block;width:18px;height:18px;border-radius:50%}
 .pc.on{outline:3px solid var(--sun);outline-offset:-3px}
-.selacts{display:inline-flex;gap:6px}
-.selacts[hidden]{display:none}
+.selacts,.nudge{display:inline-flex;gap:6px;flex-wrap:wrap}
+.selacts[hidden],.nudge[hidden]{display:none}
+.nudge button[data-nudge]{min-width:44px;padding:4px 8px}
 button:disabled{opacity:.38;cursor:default;transform:none}
 #penBtn.on{background:var(--accent);color:#fff}
 .stage.pen #modeBtn{opacity:.45}
