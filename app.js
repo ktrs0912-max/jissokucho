@@ -58,6 +58,16 @@ async function renderHome() {
   $('#homeEmpty').hidden = sites.length > 0;
   renderBackupInfo();
 }
+$('#demoBtn').onclick = async () => {
+  const b = $('#demoBtn'); b.disabled = true; b.textContent = '見本を用意しています…';
+  try {
+    const site = await Demo.create(); persist();
+    S.site = site; await go('site');
+    S.drawing = site.drawings[0]; S.page = 1; S.pos = null; go('draw');
+    toast('見本の現場です。番号や数字をさわってみてください');
+  } catch (err) { toast('見本を作れませんでした：' + (err.message || err)); }
+  finally { b.disabled = false; b.textContent = '見本の現場で試してみる'; }
+};
 $('#addSite').onclick = async () => {
   const name = $('#newSiteName').value.trim();
   if (!name) { $('#newSiteName').focus(); return; }

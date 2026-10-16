@@ -3,13 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#24506e">
+<meta name="theme-color" content="#2a8c80">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="実測帳">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>実測帳</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,17 +26,21 @@
 <!-- ホーム：現場一覧 -->
 <section id="vHome" class="view">
   <header class="top">
-    <h1>実測帳<small>図面で番号を打って実測</small></h1>
+    <h1 class="brand"><i aria-hidden="true">1</i>実測帳<small>図面にポンと番号、実測をラクに</small></h1>
   </header>
   <main class="pad stack">
     <div class="row">
-      <input id="newSiteName" type="text" placeholder="現場名（例：紺屋町）" aria-label="現場名">
+      <input id="newSiteName" type="text" placeholder="現場名（例：みどりハイツ）" aria-label="現場名">
       <button id="addSite" class="primary" type="button">＋ 現場を追加</button>
     </div>
     <ul id="siteList" class="list"></ul>
-    <p id="homeEmpty" class="note" hidden>まだ現場がありません。現場名を入れて「＋ 現場を追加」を押してください。</p>
-    <p class="note small">データはこのスマホの中だけに保存されます。図面がネットに送られることはありません。</p>
-    <p class="note small">アプリの版：<span id="appVer">v30</span></p>
+    <div id="homeEmpty" class="hello" hidden>
+      <h2>ようこそ！</h2>
+      <p>まずは見本の現場で、どんなことができるか触ってみてください。見本はいつでも消せます。</p>
+      <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
+    </div>
+    <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
+    <p class="note small">アプリの版：<span id="appVer">v31</span></p>
     <section class="backup stack">
       <h2>ドライブと同期</h2>
       <p id="syncInfo" class="note"></p>
@@ -122,7 +129,7 @@
     </div>
 
     <div class="panel">
-      <div id="noPos" class="note">上の「＋ 位置」で位置（例：KT-2）を作ると、図面をタップして①②③…と番号を打てます。</div>
+      <div id="noPos" class="note">上の「＋ 位置」で測る場所のグループ（例：B-1）を作ると、図面をタップして①②③…と番号を打てます。</div>
       <div id="posBody" hidden>
         <div class="poshead">
           <strong id="posName"></strong>
@@ -162,7 +169,7 @@
 <dialog id="posDlg">
   <form method="dialog" class="stack">
     <h2>位置を追加</h2>
-    <label>位置の名前<input id="pName" type="text" placeholder="例：KT-2" required></label>
+    <label>位置の名前<input id="pName" type="text" placeholder="例：B-1" required></label>
     <div class="row">
       <label>開始階<input id="pFrom" type="number" inputmode="numeric" value="2" min="1" max="60"></label>
       <label>終了階<input id="pTo" type="number" inputmode="numeric" value="9" min="1" max="60"></label>
@@ -254,6 +261,7 @@
 <script src="store.js"></script>
 <script src="sync.js"></script>
 <script src="annot.js"></script>
+<script src="demo.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2a8c80">
+<meta name="description" content="図面をタップして番号を打ち、階ごとの実測値を入れるだけ。ズレのチェック、写真、Excelの実測表までスマホ1台で。">
+<title>実測帳｜現場の実測を、スマホ1台でラクに</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap">
+<style>
+:root{
+  --bg:#f3f8f5; --surface:#fff; --ink:#2b3a42; --muted:#6b7b80; --line:#dce7e2;
+  --accent:#2a8c80; --accentsoft:#e2f3ef; --red:#e0564a; --sun:#f5b941; --warnbg:#fff1d2;
+  --shadow:0 4px 18px rgba(43,58,66,.09);
+  --f:"M PLUS Rounded 1c","Hiragino Maru Gothic ProN","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.8 var(--f)}
+a{color:inherit}
+.wrap{max-width:1040px;margin:0 auto;padding-inline:20px}
+header.nav{position:sticky;top:0;z-index:5;background:rgba(243,248,245,.9);backdrop-filter:blur(8px)}
+header.nav .wrap{display:flex;align-items:center;justify-content:space-between;padding-block:12px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;text-decoration:none}
+.logo i{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;font-style:normal}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:10px 24px;border-radius:999px;font-weight:800;text-decoration:none;transition:transform .1s}
+.btn:active{transform:scale(.97)}
+.btn.main{background:var(--accent);color:#fff;box-shadow:0 6px 18px rgba(42,140,128,.3)}
+.btn.sub{background:var(--surface);color:var(--accent);box-shadow:var(--shadow)}
+.btn.small{min-height:40px;padding:6px 18px;font-size:14px}
+/* はじめの画面 */
+.hero{padding-block:40px 30px}
+.hero .wrap{display:grid;grid-template-columns:1.1fr .9fr;gap:40px;align-items:center}
+.tag{display:inline-block;background:var(--warnbg);color:#9a5c00;font-weight:800;font-size:13px;padding:3px 14px;border-radius:999px}
+h1{font-size:clamp(30px,5vw,48px);line-height:1.35;margin:14px 0 14px;font-weight:800;text-wrap:balance}
+h1 em{font-style:normal;color:var(--accent);background:linear-gradient(transparent 62%,#fde3a6 62%)}
+.lead{color:var(--muted);font-size:17px;margin:0 0 26px;max-width:34em}
+.ctas{display:flex;gap:12px;flex-wrap:wrap}
+.phone{justify-self:center;width:min(300px,80vw);aspect-ratio:9/18;background:#fff;border-radius:38px;box-shadow:0 18px 50px rgba(43,58,66,.18);border:10px solid #2b3a42;overflow:hidden;display:flex;flex-direction:column}
+.phone .bar{background:#fff;padding:10px 14px;font-weight:800;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;gap:8px;align-items:center}
+.phone .bar span{background:var(--accent);color:#fff;border-radius:999px;padding:0 10px;font-size:12px}
+.phone .draw{flex:0 0 46%;background:#d6dfdb;display:grid;place-items:center;padding:10px}
+.phone .draw svg{width:100%;height:auto;background:#fff;border-radius:6px;box-shadow:0 2px 10px rgba(0,0,0,.1)}
+.phone table{border-collapse:collapse;width:calc(100% - 20px);margin:10px;font-size:12px;text-align:center;font-weight:800}
+.phone th{color:var(--muted);font-weight:700;padding:3px;border:1px solid #edf2ef}
+.phone td{color:var(--red);padding:5px 2px;border:1px solid #edf2ef}
+.phone td.off{background:var(--warnbg);color:#9a5c00}
+/* 困りごと */
+section{padding-block:46px}
+h2{font-size:clamp(22px,3.4vw,30px);font-weight:800;margin:0 0 8px;text-wrap:balance}
+.sec-lead{color:var(--muted);margin:0 0 28px}
+.pain{background:var(--surface)}
+.pain ul{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.pain li{background:var(--bg);border-radius:18px;padding:18px 20px;font-weight:700}
+.pain li small{display:block;color:var(--muted);font-weight:400;font-size:14px;margin-top:4px}
+/* できること */
+.feats{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.feat{background:var(--surface);border-radius:20px;padding:22px;box-shadow:var(--shadow)}
+.feat .ico{width:46px;height:46px;border-radius:14px;background:var(--accentsoft);display:grid;place-items:center;margin-bottom:12px}
+.feat .ico svg{width:26px;height:26px;stroke:var(--accent);fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.feat h3{margin:0 0 6px;font-size:18px;font-weight:800}
+.feat p{margin:0;color:var(--muted);font-size:15px}
+/* 使い方 */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;counter-reset:s}
+.step{position:relative;background:var(--surface);border-radius:20px;padding:24px 22px 22px 22px;box-shadow:var(--shadow)}
+.step b{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--red);color:#fff;font-size:18px;margin-bottom:10px}
+.step h3{margin:0 0 6px;font-size:18px}
+.step p{margin:0;color:var(--muted);font-size:15px}
+/* よくある質問 */
+.faq details{background:var(--surface);border-radius:16px;padding:14px 20px;margin-bottom:10px;box-shadow:var(--shadow)}
+.faq summary{cursor:pointer;font-weight:800;list-style:none}
+.faq summary::before{content:"Q ";color:var(--accent)}
+.faq details p{margin:8px 0 0;color:var(--muted)}
+.final{text-align:center;background:linear-gradient(135deg,var(--accentsoft),#fff);border-radius:28px;padding:40px 20px;margin-bottom:40px}
+.final p{color:var(--muted);margin:6px 0 22px}
+footer{color:var(--muted);font-size:13px;text-align:center;padding:20px 0 40px}
+@media (max-width:760px){
+  .hero .wrap{grid-template-columns:1fr}
+  .hero{padding-top:20px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="#"><i>1</i>実測帳</a>
+    <a class="btn main small" href="./">無料で試す</a>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <span class="tag">体験版・無料</span>
+      <h1>図面にタップで番号。<br>実測が、<em>ぐっとラクに</em>。</h1>
+      <p class="lead">手摺・金物・内装など、現場の実測をスマホ1台で。図面に①②③と番号を打って、階ごとの数字を入れるだけ。ズレのチェックからExcelの実測表まで、アプリがまとめてやります。</p>
+      <div class="ctas">
+        <a class="btn main" href="./">見本の現場で試してみる</a>
+        <a class="btn sub" href="#feats">できることを見る</a>
+      </div>
+    </div>
+    <div class="phone" aria-label="アプリの画面のイメージ">
+      <div class="bar">見本図面 <span>B-1</span></div>
+      <div class="draw">
+        <svg viewBox="0 0 200 120" role="img" aria-label="図面に番号が打たれたイメージ">
+          <rect x="16" y="22" width="168" height="48" fill="none" stroke="#333" stroke-width="2"/>
+          <g stroke="#555" stroke-width="1">
+            <line x1="30" y1="26" x2="30" y2="66"/><line x1="44" y1="26" x2="44" y2="66"/><line x1="58" y1="26" x2="58" y2="66"/><line x1="72" y1="26" x2="72" y2="66"/><line x1="86" y1="26" x2="86" y2="66"/><line x1="100" y1="26" x2="100" y2="66"/><line x1="114" y1="26" x2="114" y2="66"/><line x1="128" y1="26" x2="128" y2="66"/><line x1="142" y1="26" x2="142" y2="66"/><line x1="156" y1="26" x2="156" y2="66"/><line x1="170" y1="26" x2="170" y2="66"/>
+          </g>
+          <path d="M16 92 V86 H184 V92" fill="none" stroke="#d7261e" stroke-width="2"/>
+          <text x="80" y="104" font-size="9" fill="#d7261e" font-weight="700">ここ要確認</text>
+          <g font-size="9" font-weight="700" fill="#fff" text-anchor="middle">
+            <circle cx="50" cy="46" r="8" fill="#e0564a"/><text x="50" y="49">1</text>
+            <circle cx="90" cy="46" r="8" fill="#e0564a"/><text x="90" y="49">2</text>
+            <circle cx="130" cy="46" r="8" fill="#e0564a"/><text x="130" y="49">3</text>
+            <circle cx="170" cy="46" r="8" fill="#e0564a"/><text x="170" y="49">4</text>
+          </g>
+        </svg>
+      </div>
+      <table>
+        <tr><th>階</th><th>①</th><th>②</th><th>③</th><th>④</th></tr>
+        <tr><th>2F</th><td>1002</td><td>998</td><td>1001</td><td>999</td></tr>
+        <tr><th>3F</th><td>1001</td><td>999</td><td>1003</td><td>1000</td></tr>
+        <tr><th>4F</th><td>999</td><td class="off">1024</td><td>1000</td><td>1001</td></tr>
+        <tr><th>5F</th><td>1000</td><td>997</td><td>1002</td><td>998</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<section class="pain">
+  <div class="wrap">
+    <h2>こんな「実測のめんどう」、ありませんか？</h2>
+    <p class="sec-lead">紙と赤ペンの実測は、あとから手間が倍になります。</p>
+    <ul>
+      <li>紙の図面に赤ペンで番号を書いて、測った数字をメモ<small>雨や汚れでメモが読めない…</small></li>
+      <li>事務所に戻ってから、Excelに打ち直し<small>二度手間で、写し間違いも起きやすい</small></li>
+      <li>階ごとの数字のズレに、あとから気づく<small>製作の前に気づければ防げたのに…</small></li>
+      <li>写真がどの場所か分からなくなる<small>「この写真、何階のどこだっけ？」</small></li>
+    </ul>
+  </div>
+</section>
+
+<section id="feats">
+  <div class="wrap">
+    <h2>実測帳でできること</h2>
+    <p class="sec-lead">現場でスマホを開いて、タップと数字入力だけ。</p>
+    <div class="feats">
+      <div class="feat"><div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M9 10l3-2"/></svg></div><h3>図面にタップで番号</h3><p>PDFや写真の図面をタップすると①②③と番号が付きます。測る場所のグループごとに番号を分けられます。</p></div>
+      <div class="feat"><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg></div><h3>階×番号の表で入力</h3><p>番号ごとに階の数字を入れるだけ。他の階とズレている値は自動でオレンジ色になります。</p></div>
+      <div class="feat"><div class="ico"><svg viewBox="0 0 24 24"><path d="M4 18h16M4 18V8M20 18V8M4 13h16"/></svg></div><h3>図面の寸法との差</h3><p>図面の寸法を入れておくと「+18」のように差を表示。20mm以上は赤で知らせます。</p></div>
+      <div class="feat"><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="14" rx="3"/><circle cx="12" cy="13" r="4"/><path d="M8 6l1.5-2h5L16 6"/></svg></div><h3>番号ごとの現場写真</h3><p>番号と階にひもづけて撮影。写真にも線や文字を書き込めます。</p></div>
+      <div class="feat"><div class="ico"><svg viewBox="0 0 24 24"><path d="M4 20l4-1 11-11-3-3L5 16l-1 4z"/><path d="M14 6l3 3"/></svg></div><h3>図面に書き込み</h3><p>線・文字・コの字の寸法範囲。選んで移動やコピーも。戻す・進むもできます。</p></div>
+      <div class="feat"><div class="ico"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Excelの実測表をワンタップ</h3><p>符号ごとの表・番号入りの図面・写真・集計（中間値・差）を1つのExcelに。</p></div>
+      <div class="feat"><div class="ico"><svg viewBox="0 0 24 24"><path d="M7 18a5 5 0 010-10 6 6 0 0111.5 2A4 4 0 0117 18H7z"/></svg></div><h3>ドライブで共有・電波なしでもOK</h3><p>自分のGoogleドライブとつなぐと、スマホでもパソコンでも同じデータ。電波がない現場でも使えます。</p></div>
+    </div>
+  </div>
+</section>
+
+<section style="background:var(--surface)">
+  <div class="wrap">
+    <h2>使い方は3ステップ</h2>
+    <p class="sec-lead">インストールは不要。ブラウザで開いて、ホーム画面に追加するだけ。</p>
+    <div class="steps">
+      <div class="step"><b>1</b><h3>図面を入れる</h3><p>施工図のPDFか、図面の写真を追加します。</p></div>
+      <div class="step"><b>2</b><h3>タップして番号</h3><p>測る場所をタップすると①②③と番号が付きます。</p></div>
+      <div class="step"><b>3</b><h3>数字を入れる</h3><p>階ごとの実測値を入れれば、ズレの確認もExcelも自動です。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="faq">
+  <div class="wrap">
+    <h2>よくある質問</h2>
+    <details><summary>お金はかかりますか？</summary><p>今は体験版として無料で使えます。</p></details>
+    <details><summary>入れた図面やデータは、誰かに見られますか？</summary><p>データは使っている端末の中と、つないだ場合はご自身のGoogleドライブだけに保存されます。作った側が見ることはできません。</p></details>
+    <details><summary>電波のない現場でも使えますか？</summary><p>使えます。一度電波のある所で開いておけば、電波がなくても入力できます。電波が戻ると自動でドライブと同期します。</p></details>
+    <details><summary>スマホ以外でも使えますか？</summary><p>タブレットやパソコンのブラウザでも使えます。</p></details>
+  </div>
+</section>
+
+<div class="wrap">
+  <div class="final">
+    <h2>まずは見本の現場で、30秒さわってみてください</h2>
+    <p>登録もインストールもいりません。</p>
+    <a class="btn main" href="./">実測帳をひらく</a>
+  </div>
+</div>
+
+<footer>© 2026 実測帳（体験版）</footer>
+</body>
+</html>
