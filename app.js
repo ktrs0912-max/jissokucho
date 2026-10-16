@@ -627,7 +627,8 @@ function renderGrid() {
   const tb = t.createTBody();
   p.floors.forEach((f, ri) => {
     const tr = tb.insertRow();
-    const th = document.createElement('th'); th.className = 'fl'; th.scope = 'row'; th.textContent = f; tr.append(th);
+    const th = document.createElement('th'); th.className = 'fl rowh'; th.scope = 'row'; th.textContent = f; tr.append(th);
+    th.title = 'タップで箇所の追加・名前の変更'; th.onclick = () => openRowMenu(f);
     p.points.forEach((pt, ci) => {
       const td = tr.insertCell(), inp = document.createElement('input');
       if (pt.id === S.selPoint) td.className = 'sel';
@@ -733,9 +734,62 @@ grid.addEventListener('keydown', e => {
 $('#memo').addEventListener('input', e => { if (S.pos) { S.pos.memo = e.target.value; scheduleSave(); } });
 $('#addFloor').onclick = () => {
   const p = S.pos, last = p.floors[p.floors.length - 1];
-  let n = last ? parseInt(last) + 1 : 1; while (p.floors.includes(n + 'F')) n++;
+  const nums = p.floors.map(f => parseInt(f)).filter(Number.isFinite); // 「5F-イ」「5F X2〜X3」なども数字の部分で見る
+  let n = nums.length ? Math.max(...nums) + 1 : 1; while (p.floors.includes(n + 'F')) n++;
   p.floors.push(n + 'F'); renderGrid(); scheduleSave();
 };
+/* ---------- 表の行（階）のメニュー：同じ階に箇所を増やす・名前を変える・削除 ---------- */
+// 同じ階の箇所は「5F-ア」「5F-イ」…と名前を付けて、5F の行の下に並べる
+const KANA = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ';
+const baseOf = f => f.split('-')[0];
+let rowTarget = null;
+function openRowMenu(f) {
+  rowTarget = f;
+  $('#rowTitle').textContent = `「${f}」の行`;
+  $('#rowName').value = f;
+  $('#rowDlg').showModal();
+}
+// 行の名前を変える時は、実測値・写真の階も一緒に付け替える
+async function renameRow(from, to) {
+  const p = S.pos;
+  p.floors[p.floors.indexOf(from)] = to;
+  if (p.values[from]) { p.values[to] = p.values[from]; delete p.values[from]; }
+  for (const ph of S.photos.filter(x => x.floor === from)) { ph.floor = to; ph.updatedAt = new Date().toISOString(); await Store.put('photos', ph); }
+  if (S.selFloor === from) S.selFloor = to;
+}
+$('#rowAddLoc').onclick = async () => {
+  const p = S.pos, f = rowTarget, base = baseOf(f);
+  if (!f.includes('-')) await renameRow(f, `${base}-ア`); // 最初の1つは「ア」にする
+  const same = p.floors.filter(x => baseOf(x) === base);
+  const used = new Set(same.map(x => x.split('-')[1]));
+  const k = [...KANA].find(c => !used.has(c)) || String(same.length + 1);
+  const name = `${base}-${k}`;
+  p.floors.splice(p.floors.indexOf(same[same.length - 1]) + 1, 0, name);
+  $('#rowDlg').close(); renderGrid(); renderPhotos(); scheduleSave();
+  toast(`${name} を追加しました`);
+};
+$('#rowForm').onsubmit = async e => {
+  e.preventDefault();
+  const to = $('#rowName').value.trim(), from = rowTarget;
+  if (!to || to === from) { $('#rowDlg').close(); return; }
+  if (S.pos.floors.includes(to)) { toast(`「${to}」はもうあります`); return; }
+  await renameRow(from, to);
+  $('#rowDlg').close(); renderGrid(); renderPhotos(); scheduleSave();
+  toast(`「${to}」に変えました`);
+};
+$('#rowDel').onclick = async () => {
+  const p = S.pos, f = rowTarget;
+  $('#rowDlg').close();
+  if (p.floors.length <= 1) { toast('最後の1行は削除できません'); return; }
+  const hasVal = Object.values(p.values[f] || {}).some(v => v !== '');
+  if (hasVal && !await ask(`「${f}」の実測値を削除します。元に戻せません。`)) return;
+  p.floors.splice(p.floors.indexOf(f), 1); delete p.values[f];
+  for (const ph of S.photos.filter(x => x.floor === f)) { ph.floor = null; ph.updatedAt = new Date().toISOString(); await Store.put('photos', ph); }
+  if (S.selFloor === f) S.selFloor = null;
+  renderGrid(); renderPhotos(); scheduleSave(); toast(`「${f}」を削除しました`);
+};
+$('#rowCancel').onclick = () => $('#rowDlg').close();
+
 // 一番上の階を減らす。数値が入っていたら確認してから
 $('#delFloor').onclick = async () => {
   const p = S.pos; if (!p || p.floors.length <= 1) return;

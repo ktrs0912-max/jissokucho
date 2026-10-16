@@ -124,6 +124,8 @@ th.fl{position:sticky;left:0;z-index:1;background:var(--surface2);min-width:50px
 td input{width:66px;height:46px;border:0;background:transparent;text-align:center;font:800 16px var(--f-num);color:var(--red);padding:0 2px}
 td input:focus{background:var(--accentsoft);outline:none}
 td{position:relative}
+th.rowh{cursor:pointer;text-decoration:underline dotted color-mix(in srgb,var(--muted) 60%,transparent);text-underline-offset:3px;white-space:nowrap}
+th.rowh:active{background:var(--sel)}
 tr.design td input{color:var(--accent);font-weight:400;font-size:14px;height:40px}
 tr.design td input::placeholder{color:var(--muted);font-size:11px;opacity:.6}
 tr.design th.fl{font-size:12px;color:var(--accent)}

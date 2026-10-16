@@ -40,7 +40,7 @@
       <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
     </div>
     <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-    <p class="note small">アプリの版：<span id="appVer">v32</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v33</span></p>
     <section class="backup stack">
       <h2>ドライブと同期</h2>
       <p id="syncInfo" class="note"></p>
@@ -190,6 +190,21 @@
     <div class="row">
       <button value="ok" class="danger">削除する</button>
       <button value="cancel">やめる</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 表の行（階）のメニュー -->
+<dialog id="rowDlg">
+  <form id="rowForm" class="stack">
+    <h2 id="rowTitle"></h2>
+    <button type="button" id="rowAddLoc" class="soft">この階に箇所を追加（同じ手摺が何か所もある時）</button>
+    <label>行の名前（例：5F X2〜X3）<input id="rowName" type="text" autocomplete="off"></label>
+    <div class="row wrap">
+      <button type="submit" class="primary">名前を変える</button>
+      <button type="button" id="rowDel" class="danger">この行を削除</button>
+      <span class="grow"></span>
+      <button type="button" id="rowCancel">閉じる</button>
     </div>
   </form>
 </dialog>
