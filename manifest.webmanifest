@@ -1,6 +1,6 @@
 {
-  "name": "実測帳",
-  "short_name": "実測帳",
+  "name": "ピタ測",
+  "short_name": "ピタ測",
   "description": "図面をタップして番号を打ち、実測値を記録する現場の実測アプリ",
   "start_url": "./",
   "scope": "./",

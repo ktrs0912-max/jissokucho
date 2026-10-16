@@ -1,4 +1,4 @@
-// 実測帳：図面をタップして①②③…と番号を打ち、階ごとの実測値を入れるアプリ
+// ピタ測：図面をタップして①②③…と番号を打ち、階ごとの実測値を入れるアプリ
 const $ = s => document.querySelector(s);
 const CIRC = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚';
 const circ = n => CIRC[n - 1] || `(${n})`;
@@ -1020,7 +1020,7 @@ $('#xlsxBtn').onclick = async () => {
     if (!window.ExcelJS) await loadScript(EXCELJS);
     const poss = (await Store.byIndex('positions', 'site', S.site.id)).filter(p => p.points.length)
       .sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
-    const wb = new ExcelJS.Workbook(); wb.creator = '実測帳';
+    const wb = new ExcelJS.Workbook(); wb.creator = 'ピタ測';
     const thin = { style: 'thin', color: { argb: 'FFB8BFB6' } }, box = { top: thin, left: thin, bottom: thin, right: thin };
     const head = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3EDF3' } };
     const offFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFECC4' } };
@@ -1150,7 +1150,7 @@ $('#xlsxBtn').onclick = async () => {
     const d = new Date(), pad = x => String(x).padStart(2, '0');
     const name = `${S.site.name}_実測値記入表_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.xlsx`.replace(/[\\/:*?"<>|]/g, '_');
     const xblob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-    // ドライブとつながっていれば「実測帳データ/Excel出力」へ。つながっていなければスマホのダウンロードへ
+    // ドライブとつながっていれば「ピタ測データ/Excel出力」へ。つながっていなければスマホのダウンロードへ
     if (Sync.connected() && navigator.onLine !== false) {
       btn.textContent = 'ドライブに保存しています…';
       try {
@@ -1191,7 +1191,7 @@ $('#backupBtn').onclick = async () => {
     for (const ph of photos) { const { blob, ...rest } = ph; photoData.push({ ...rest, data: await blobToDataUrl(blob) }); }
     const body = JSON.stringify({ app: 'jissokucho', version: 2, exportedAt: new Date().toISOString(), sites, positions, files: fileData, photos: photoData });
     const d = new Date(), p = n => String(n).padStart(2, '0');
-    const name = `実測帳バックアップ_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.txt`;
+    const name = `ピタ測バックアップ_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}.txt`;
     if (!await shareOrSave(new Blob([body], { type: 'text/plain' }), name)) { toast('保存をやめました'); return; }
     try { localStorage.setItem('jissoku.backupAt', d.toISOString()); } catch (e) {}
     toast('バックアップを作りました'); renderBackupInfo();
@@ -1204,7 +1204,7 @@ $('#restoreIn').onchange = async e => {
   if (!f) return;
   let data;
   try { data = JSON.parse(await f.text()); } catch (err) { toast('バックアップのファイルではないようです'); return; }
-  if (data?.app !== 'jissokucho' || !Array.isArray(data.sites)) { toast('実測帳のバックアップではないようです'); return; }
+  if (data?.app !== 'jissokucho' || !Array.isArray(data.sites)) { toast('ピタ測のバックアップではないようです'); return; }
   const when = data.exportedAt ? new Date(data.exportedAt).toLocaleString('ja-JP') : '日時不明';
   if (!await ask(`${when} のバックアップ（現場${data.sites.length}件）を戻します。同じ現場・位置は、バックアップの内容で上書きされます。`)) return;
   try {

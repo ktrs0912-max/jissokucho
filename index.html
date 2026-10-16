@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2a8c80">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="実測帳">
+<meta name="apple-mobile-web-app-title" content="ピタ測">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>実測帳</title>
+<title>ピタ測</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap">
@@ -26,7 +26,7 @@
 <!-- ホーム：現場一覧 -->
 <section id="vHome" class="view">
   <header class="top">
-    <h1 class="brand"><i aria-hidden="true">1</i>実測帳<small>図面にポンと番号、実測をラクに</small></h1>
+    <h1 class="brand"><i aria-hidden="true">1</i>ピタ測<small>図面にポンと番号、実測をラクに</small></h1>
   </header>
   <main class="pad stack">
     <div class="row">
@@ -40,7 +40,7 @@
       <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
     </div>
     <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-    <p class="note small">アプリの版：<span id="appVer">v36</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v37</span></p>
     <section class="backup stack">
       <h2>ドライブと同期</h2>
       <p id="syncInfo" class="note"></p>
@@ -49,7 +49,7 @@
         <button id="syncNowBtn" type="button" hidden>今すぐ同期</button>
         <button id="syncOff" type="button" hidden>つなぐのをやめる</button>
       </div>
-      <p class="note small">つなぐと、どのスマホ・パソコンで開いても同じ現場・実測値・図面・写真が見られます。つないだGoogleアカウントのドライブの「実測帳データ」フォルダに保存されます。安全のため1時間ごとに切れますが、画面をタップすると自動でつなぎ直します。</p>
+      <p class="note small">つなぐと、どのスマホ・パソコンで開いても同じ現場・実測値・図面・写真が見られます。つないだGoogleアカウントのドライブの「ピタ測データ」フォルダに保存されます。安全のため1時間ごとに切れますが、画面をタップすると自動でつなぎ直します。</p>
     </section>
     <section class="backup stack">
       <h2>バックアップ</h2>
@@ -83,7 +83,7 @@
     <p id="siteEmpty" class="note" hidden>図面がまだありません。施工図のPDFか、図面を撮った写真を追加してください。</p>
     <div id="xlsxBox" class="stack" hidden>
       <button id="xlsxBtn" type="button" class="primary">Excelで保存（実測値記入表）</button>
-      <p class="note small">符号ごとの実測値の表、番号入りの図面、現場写真、集計（中間値・最大・最小・差。差が20mm以上は赤字）を1つのExcelにまとめます。ドライブとつながっていれば「実測帳データ ＞ Excel出力」に、つながっていなければスマホの「ダウンロード」に保存します。</p>
+      <p class="note small">符号ごとの実測値の表、番号入りの図面、現場写真、集計（中間値・最大・最小・差。差が20mm以上は赤字）を1つのExcelにまとめます。ドライブとつながっていれば「ピタ測データ ＞ Excel出力」に、つながっていなければスマホの「ダウンロード」に保存します。</p>
     </div>
     <div class="dangerzone">
       <button id="delSite" class="danger" type="button">この現場を削除</button>
@@ -231,7 +231,7 @@
 <dialog id="savedDlg">
   <div class="stack">
     <h2>ドライブに保存しました</h2>
-    <p class="note"><span id="savedAcct">つないだアカウント</span>のドライブの「実測帳データ ＞ Excel出力」に入っています。</p>
+    <p class="note"><span id="savedAcct">つないだアカウント</span>のドライブの「ピタ測データ ＞ Excel出力」に入っています。</p>
     <p id="savedName" style="margin:0;font-weight:700;word-break:break-all"></p>
     <div class="row wrap">
       <a id="savedLink" class="filebtn primary" href="#" target="_blank" rel="noopener">ドライブで開く</a>

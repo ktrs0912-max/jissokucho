@@ -1,5 +1,5 @@
 // Googleドライブとの同期：どの端末で開いても同じ実測値・図面・写真が見られるようにする
-// ドライブの「実測帳データ」フォルダに
+// ドライブの「ピタ測データ」フォルダに
 //   data.json      … 現場・符号・実測値・写真の情報（写真そのものは別ファイル）と「消した印」
 //   file_<id>      … 図面（PDF・画像）
 //   photo_<id>     … 現場写真
@@ -7,7 +7,7 @@
 const Sync = (() => {
   const CLIENT_ID = '950333121100-mr2lv09h1bokm5vpcbdj622qak0a0bed.apps.googleusercontent.com'; // Google Cloud プロジェクト jissokucho の OAuth クライアントID
   const SCOPE = 'https://www.googleapis.com/auth/drive.file'; // このアプリが作ったファイルだけ触れる
-  const FOLDER = '実測帳データ';
+  const FOLDER = 'ピタ測データ';
   const TRACK = new Set(['sites', 'positions', 'photos', 'files']);
   const K = { email: 'jissoku.sync.email', tok: 'jissoku.sync.tok', on: 'jissoku.sync.on', last: 'jissoku.sync.last', tombs: 'jissoku.sync.tombs', folder: 'jissoku.sync.folder' };
   const LS = {
@@ -90,12 +90,26 @@ const Sync = (() => {
     return r;
   }
   async function ensureFolder() {
-    if (folderId) return folderId;
+    if (folderId) {
+      if (!LS.get('jissoku.sync.renamed')) { // 前から使っている人のフォルダも、1回だけ新しい名前にそろえる
+        try { await api(`files/${folderId}?fields=id`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: FOLDER }) }); } catch (e) {}
+        LS.set('jissoku.sync.renamed', true);
+      }
+      return folderId;
+    }
     const q = encodeURIComponent(`name='${FOLDER}' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
     const found = (await (await api(`files?q=${q}&fields=files(id)&spaces=drive`)).json()).files;
     if (found?.length) folderId = found[0].id;
+    else if ((folderId = await renameOldFolder())) {} // 名前を変える前の「実測帳データ」があれば引き継ぐ
     else folderId = (await (await api('files?fields=id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: FOLDER, mimeType: 'application/vnd.google-apps.folder' }) })).json()).id;
-    LS.set(K.folder, folderId); return folderId;
+    LS.set(K.folder, folderId); LS.set('jissoku.sync.renamed', true); return folderId;
+  }
+  async function renameOldFolder() {
+    const q = encodeURIComponent(`name='実測帳データ' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
+    const old = (await (await api(`files?q=${q}&fields=files(id)&spaces=drive`)).json()).files;
+    if (!old?.length) return null;
+    await api(`files/${old[0].id}?fields=id`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: FOLDER }) });
+    return old[0].id;
   }
   async function listFolder() {
     const out = {}; let page = '';
@@ -178,7 +192,7 @@ const Sync = (() => {
   setInterval(() => { if (connected() && !document.hidden) syncNow(); }, 60000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden && connected()) syncNow(); });
 
-  // Excelなどの書き出しファイルを「実測帳データ/Excel出力」に保存（同じ名前があれば上書き）
+  // Excelなどの書き出しファイルを「ピタ測データ/Excel出力」に保存（同じ名前があれば上書き）
   let outFolderId = null;
   async function saveExport(name, blob) {
     if (!connected() || offline()) throw new Error('ドライブとつながっていません');
