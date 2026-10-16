@@ -39,6 +39,7 @@ button.sm{min-height:38px;padding:4px 12px;font-size:13px}
 .primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 3px 10px rgba(42,140,128,.25)}
 .danger{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent);background:transparent}
 .soft{background:var(--accentsoft);border-color:transparent;color:var(--accent)}
+dialog button{white-space:normal;text-align:center} /* 長い文字のボタンも枠からはみ出さない */
 button:focus-visible,input:focus-visible,textarea:focus-visible,.filebtn:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:2px}
 .list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
 .list li button{width:100%;justify-content:space-between;text-align:left;min-height:62px;font-weight:800;border:0;border-radius:var(--r);box-shadow:var(--shadow);padding:10px 18px}
