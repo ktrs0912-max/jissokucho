@@ -40,7 +40,7 @@
       <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
     </div>
     <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-    <p class="note small">アプリの版：<span id="appVer">v35</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v36</span></p>
     <section class="backup stack">
       <h2>ドライブと同期</h2>
       <p id="syncInfo" class="note"></p>
@@ -114,11 +114,15 @@
   <div id="penBar" class="penbar" hidden></div>
 
   <div class="split">
-    <div id="stage" class="stage">
-      <div id="layer" class="layer">
-        <canvas id="cv"></canvas>
-        <svg id="marks" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="stagecol">
+      <div id="stage" class="stage">
+        <div id="layer" class="layer">
+          <canvas id="cv"></canvas>
+          <svg id="marks" xmlns="http://www.w3.org/2000/svg"></svg>
+        </div>
+        <p id="stageMsg" class="stagemsg" hidden></p>
       </div>
+      <!-- 図面の操作ボタンは図面に重ならないよう、図面のすぐ下の帯に置く -->
       <div class="tools">
         <button id="penBtn" type="button" class="tool" aria-pressed="false">✎ 書く</button>
         <button id="modeBtn" type="button" class="tool on" aria-pressed="true">● 番号を打つ</button>
@@ -126,7 +130,6 @@
         <button id="fitBtn" type="button" class="tool">全体</button>
         <button id="sizeBtn" type="button" class="tool">丸：中</button>
       </div>
-      <p id="stageMsg" class="stagemsg" hidden></p>
     </div>
 
     <div class="panel">
