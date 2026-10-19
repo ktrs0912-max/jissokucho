@@ -8,6 +8,11 @@ if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
 
 const S = { site: null, drawing: null, page: 1, pos: null, positions: [], selPoint: null, selFloor: null, addMode: true, undo: [], photos: [] };
 const pdfCache = new Map();
+// 符号の並び順：図面（現場に追加した順）→ページ（図番の順）→名前
+const posOrder = (a, b) => {
+  const di = p => S.site?.drawings.findIndex(x => x.id === p.drawingId) ?? 0;
+  return di(a) - di(b) || a.page - b.page || a.name.localeCompare(b.name, 'ja', { numeric: true });
+};
 
 function toast(t) {
   const el = $('#toast'); el.textContent = t; el.hidden = false;
@@ -86,7 +91,7 @@ async function renderSite() {
   S.site.drawings.forEach(d => {
     const li = document.createElement('li'), b = document.createElement('button');
     b.type = 'button'; b.textContent = d.name;
-    const n = poss.filter(p => p.drawingId === d.id);
+    const n = poss.filter(p => p.drawingId === d.id).sort(posOrder);
     const sp = document.createElement('span');
     sp.textContent = `${d.pages}ページ` + (n.length ? `・${n.map(p => p.name).join(' ')}` : '');
     b.append(sp);
@@ -394,7 +399,7 @@ $('#undoBtn').onclick = () => {
 /* ---------- 位置 ---------- */
 async function openDrawing() {
   $('#drawTitle').textContent = S.drawing.name;
-  S.positions = (await Store.byIndex('positions', 'drawing', S.drawing.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  S.positions = (await Store.byIndex('positions', 'drawing', S.drawing.id)).sort(posOrder);
   if (!S.pos) S.pos = S.positions.find(p => p.page === S.page) || null;
   S.selPoint = null; S.undo = [];
   renderPager(); renderChips(); renderPos();
@@ -418,7 +423,7 @@ $('#pgNext').onclick = () => gotoPage(S.page + 1);
 
 function renderChips() {
   const box = $('#posChips'); box.innerHTML = '';
-  S.positions.forEach(p => {
+  S.positions.sort(posOrder).forEach(p => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'chip';
     b.textContent = p.name + (S.drawing.pages > 1 && p.page !== S.page ? ` (p${p.page})` : '');
     b.style.borderColor = p.color;
@@ -513,7 +518,7 @@ function findSymbols(pages) {
     const score = p => pg.get(p) / perPage.get(p);
     const best = [...pg.keys()].sort((a, b) => score(b) - score(a) || a - b)[0];
     return { name, page: best, pages: [...pg.keys()].sort((a, b) => a - b) };
-  }).sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
+  }).sort((a, b) => a.page - b.page || a.name.localeCompare(b.name, 'ja', { numeric: true }));
 }
 // そのページの「2～7F」「3F」のような書き方から階の範囲を推測する
 const FLOOR_RE = '(?<![A-Z0-9.])(\\d{1,2})(?:\\s*[～~〜\\-・,、]\\s*(\\d{1,2}))?\\s*[F階]';
@@ -1063,8 +1068,7 @@ $('#xlsxBtn').onclick = async () => {
   try {
     btn.textContent = '準備しています…';
     if (!window.ExcelJS) await loadScript(EXCELJS);
-    const poss = (await Store.byIndex('positions', 'site', S.site.id)).filter(p => p.points.length)
-      .sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
+    const poss = (await Store.byIndex('positions', 'site', S.site.id)).filter(p => p.points.length).sort(posOrder);
     const wb = new ExcelJS.Workbook(); wb.creator = 'ピタ測';
     const thin = { style: 'thin', color: { argb: 'FFB8BFB6' } }, box = { top: thin, left: thin, bottom: thin, right: thin };
     const head = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE3EDF3' } };
@@ -1330,7 +1334,7 @@ async function applyRemote() {
   if (!$('#vSite').hidden) { S.site = fresh; renderSite(); return; }
   if ($('#vDraw').hidden || saveTimer || $('#grid').contains(document.activeElement) || drawAnnot.g) return;
   S.site = fresh; S.drawing = fresh.drawings.find(d => d.id === S.drawing?.id) || S.drawing;
-  S.positions = (await Store.byIndex('positions', 'drawing', S.drawing.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  S.positions = (await Store.byIndex('positions', 'drawing', S.drawing.id)).sort(posOrder);
   S.pos = S.positions.find(p => p.id === S.pos?.id) || S.positions.find(p => p.page === S.page) || null;
   renderChips(); renderPos(); drawMarks();
 }
