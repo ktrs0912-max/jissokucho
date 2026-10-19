@@ -1220,6 +1220,33 @@ $('#restoreIn').onchange = async e => {
 $('#savedClose').onclick = () => $('#savedDlg').close();
 $('#savedLink').addEventListener('click', () => $('#savedDlg').close());
 
+/* ---------- 感想を送る（作者のGoogleフォームへ送信） ---------- */
+const FB_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSesZkO76FKxH5ldJsN6y_B8qqY3POKJ84Q4qg9KK2Gk5vDjvw/formResponse';
+const FB_ENTRY = { job: 'entry.157829829', scene: 'entry.1439691396', feat: 'entry.1667606356', trouble: 'entry.1980206129', price: 'entry.1787688409', wish: 'entry.43528767', contact: 'entry.1139231794' };
+$('#fbOpen').onclick = () => $('#fbDlg').showModal();
+$('#fbCancel').onclick = () => $('#fbDlg').close();
+$('#fbForm').onsubmit = async e => {
+  e.preventDefault();
+  const body = new URLSearchParams();
+  const put = (k, v) => { if (v && v.trim()) body.append(FB_ENTRY[k], v.trim()); };
+  put('job', $('#fbJob').value); put('scene', $('#fbScene').value);
+  document.querySelectorAll('input[name=fbFeat]:checked').forEach(c => body.append(FB_ENTRY.feat, c.value));
+  put('trouble', $('#fbTrouble').value);
+  put('price', document.querySelector('input[name=fbPrice]:checked')?.value || '');
+  put('wish', ($('#fbWish').value || '') + ($('#fbWish').value.trim() ? `\n（${$('#appVer').textContent}）` : ''));
+  put('contact', $('#fbContact').value);
+  if (![...body.keys()].length) { toast('どこか1つでも書いてから送ってください'); return; }
+  if (navigator.onLine === false) { toast('電波がないので送れませんでした。電波のある所でもう一度送ってください'); return; }
+  const b = $('#fbSend'); b.disabled = true; b.textContent = '送っています…';
+  try {
+    // Googleフォームは別サイトなので返事の中身は読めない（no-cors）。届いたかは作者側の回答一覧で確認する
+    await fetch(FB_URL, { method: 'POST', mode: 'no-cors', body });
+    $('#fbForm').reset(); $('#fbDlg').close();
+    toast('ありがとうございます！感想を送りました');
+  } catch (err) { toast('送れませんでした。電波を確かめて、もう一度送ってください'); }
+  finally { b.disabled = false; b.textContent = '送る'; }
+};
+
 /* ---------- ドライブと同期（中身は sync.js） ---------- */
 function renderSync(st = Sync.state(), msg) {
   const info = $('#syncInfo'), last = st.last ? new Date(st.last).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null;
