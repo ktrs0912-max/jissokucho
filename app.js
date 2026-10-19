@@ -91,10 +91,27 @@ async function renderSite() {
     sp.textContent = `${d.pages}ページ` + (n.length ? `・${n.map(p => p.name).join(' ')}` : '');
     b.append(sp);
     b.onclick = () => { S.drawing = d; S.page = d.lastPage || 1; S.pos = null; go('draw'); };
-    li.append(b); ul.append(li);
+    b.className = 'open';
+    const del = document.createElement('button');
+    del.type = 'button'; del.className = 'del danger'; del.textContent = '削除'; del.setAttribute('aria-label', `${d.name} を削除`);
+    del.onclick = () => delDrawing(d, n);
+    li.append(b, del); ul.append(li);
   });
   $('#siteEmpty').hidden = S.site.drawings.length > 0;
   $('#xlsxBox').hidden = !poss.some(p => p.points.length);
+}
+// 図面を1枚だけ消す（その図面の符号・実測値・写真もいっしょに）
+async function delDrawing(d, poss) {
+  const extra = poss.length ? `符号${poss.length}個と、その実測値・写真もいっしょに消えます。` : '';
+  if (!await ask(`「${d.name}」を削除します。${extra}元に戻せません。`)) return;
+  for (const p of poss) {
+    for (const ph of await Store.byIndex('photos', 'position', p.id)) await Store.del('photos', ph.id);
+    await Store.del('positions', p.id);
+  }
+  await Store.del('files', d.id); pdfCache.delete(d.id);
+  S.site.drawings = S.site.drawings.filter(x => x.id !== d.id);
+  await saveSite(); await renderSite();
+  toast('図面を削除しました');
 }
 async function saveSite() { S.site.updatedAt = new Date().toISOString(); await Store.put('sites', S.site); }
 
