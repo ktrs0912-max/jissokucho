@@ -472,15 +472,16 @@ function findSymbols(pages) {
   };
   for (const { page, items } of pages) {
     const letters = items.filter(t => /^[A-Z]{1,3}$/.test(t.s) && !SYM_SKIP.has(t.s));
-    const nums = items.filter(t => /^\d{1,2}$/.test(t.s));
+    const nums = items.filter(t => /^\d{1,2}[ア-ン]?$/.test(t.s)); // 「1」や「1ア」
+    const num = s => s.replace(/^0+(?=\d)/, '');
     for (const L of letters) {
       const lc = L.x + L.w / 2;
       const n = nums.find(N => { const dy = L.y - N.y, nc = N.x + N.w / 2; return Math.abs(nc - lc) < L.h * 1.2 && dy > L.h * 0.3 && dy < L.h * 2.2; });
-      if (n) { add(found, `${L.s}-${+n.s}`, page); stacked.add(L.s); }
+      if (n) { add(found, `${L.s}-${num(n.s)}`, page); stacked.add(L.s); }
     }
     for (const t of items) {
-      const m = t.s.match(/^([A-Z]{1,3})\s*[-‐ー－]\s*(\d{1,2})$/);
-      if (m && !SYM_SKIP.has(m[1])) add(dashed, `${m[1]}-${+m[2]}`, page);
+      const m = t.s.match(/^([A-Z]{1,3})\s*[-‐ー－]\s*(\d{1,2}[ア-ン]?)$/);
+      if (m && !SYM_SKIP.has(m[1])) add(dashed, `${m[1]}-${num(m[2])}`, page);
     }
   }
   // 「KT-2」形は、上下形の符号が無い図面か、同じ文字の符号がある時だけ採用（部品の型番 PKS-50 などを除くため）
@@ -498,8 +499,31 @@ function findSymbols(pages) {
   }).sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
 }
 // そのページの「2～7F」「3F」のような書き方から階の範囲を推測する
-function guessFloors(text) {
+const FLOOR_RE = '(?<![A-Z0-9.])(\\d{1,2})(?:\\s*[～~〜\\-・,、]\\s*(\\d{1,2}))?\\s*[F階]';
+// 「4~9F 11~22F」「5~9F、22F」のように並んでいれば、一番下〜一番上にまとめる
+const FLOORS_RE = `(${FLOOR_RE}(?:\\s*[,、]?\\s*${FLOOR_RE.replace(/\((?!\?)/g, '(?:')})*)`;
+const floorPair = m => {
+  const ns = [...m[1].matchAll(/(\d{1,2})(?:\s*[～~〜\-・,、]\s*(\d{1,2}))?\s*[F階]/gi)].flatMap(x => x[2] ? [+x[1], +x[2]] : [+x[1]]);
+  const a = Math.min(...ns), b = Math.max(...ns);
+  return ns.length && a >= 1 && b <= 60 ? [a, b] : null;
+};
+function guessFloors(text, name) {
   const t = text.normalize('NFKC');
+  if (name) {
+    // 仕様の行「6~22F 西面 バルコニー … BT 20」のように、符号のすぐ近くに書かれた階を優先する
+    const [L, N] = name.split('-'), sym = new RegExp(`(?<![A-Z])${L}\\s*[-‐ー－]?\\s*${N}(?!\\d)`, 'gi');
+    let best = null;
+    for (const s of t.matchAll(sym)) {
+      for (const m of t.matchAll(new RegExp(FLOORS_RE + '\\s*[東西南北]面', 'gi'))) {
+        const f = floorPair(m), dist = m.index < s.index ? s.index - m.index : m.index - s.index - s[0].length + 20;
+        if (f && dist < 120 && (!best || dist < best.dist)) best = { f, dist };
+      }
+    }
+    if (best) return best.f;
+    // 図面の題名「品名 2~4F 西立・平面図」
+    const ti = t.match(new RegExp(FLOORS_RE + '\\s*\\S*[立平断]面図', 'i'));
+    if (ti && floorPair(ti)) return floorPair(ti);
+  }
   // 「2～7F」のような範囲（前後が英数字の型番 PS50FAA などは除く）
   const m = t.match(/(?<![A-Z0-9])(\d{1,2})\s*[～~〜\-・]\s*(\d{1,2})\s*[F階](?![A-Z])/i);
   if (m && +m[1] <= +m[2] && +m[2] <= 60) return [+m[1], +m[2]];
@@ -508,14 +532,18 @@ function guessFloors(text) {
   return fl.length ? [Math.min(...fl), Math.max(...fl)] : [1, 1];
 }
 async function pdfPagesText(d, onProgress) {
-  const doc = await getPdf(d), out = [];
+  return docPagesText(await getPdf(d), onProgress);
+}
+async function docPagesText(doc, onProgress) {
+  const out = [];
   for (let p = 1; p <= doc.numPages; p++) {
     onProgress?.(p, doc.numPages);
-    const tc = await (await doc.getPage(p)).getTextContent();
-    const items = tc.items.filter(i => i.str && i.str.trim()).map(i => ({
-      s: i.str.trim().normalize('NFKC').toUpperCase(), x: i.transform[4], y: i.transform[5],
-      h: Math.hypot(i.transform[2], i.transform[3]) || i.height || 10, w: i.width || 0,
-    }));
+    const pg = await doc.getPage(p), vt = pg.getViewport({ scale: 1 }).transform, tc = await pg.getTextContent();
+    // 回転して保存された図面でも、画面に見えている向きで上下左右を判断する（y は上向きにそろえる）
+    const items = tc.items.filter(i => i.str && i.str.trim()).map(i => {
+      const t = pdfjsLib.Util.transform(vt, i.transform);
+      return { s: i.str.trim().normalize('NFKC').toUpperCase(), x: t[4], y: -t[5], h: Math.hypot(t[2], t[3]) || i.height || 10, w: i.width || 0 };
+    });
     out.push({ page: p, items, text: tc.items.map(i => i.str).join(' ') });
   }
   return out;
@@ -528,7 +556,7 @@ $('#findSym').onclick = async () => {
   try {
     const pages = await pdfPagesText(d, (p, n) => msg.textContent = `図面を調べています…（${p}/${n}ページ）`);
     if (!pages.some(p => p.items.length > 20)) { msg.textContent = 'この図面には文字のデータが入っていません（スキャンした図面のようです）。「＋ 位置」で追加してください。'; return; }
-    symFound = findSymbols(pages).map(s => ({ ...s, floors: guessFloors(pages[s.page - 1].text) }));
+    symFound = findSymbols(pages).map(s => ({ ...s, floors: guessFloors(pages[s.page - 1].text, s.name) }));
     if (!symFound.length) { msg.textContent = '符号が見つかりませんでした。「＋ 位置」で追加してください。'; return; }
     msg.textContent = `${symFound.length}個見つかりました。追加する符号を選んで、ページと階の範囲を確かめてください。`;
     symFound.forEach((s, i) => {
