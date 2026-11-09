@@ -623,9 +623,22 @@ $('#undoBtn').onclick = () => {
 };
 
 /* ---------- 位置 ---------- */
+// 位置の名前の横に出す小さい文字（階の範囲・番号の数・符号が出てくるページ）
+const posMeta = p => `${p.floors[0] ?? ''}〜${p.floors[p.floors.length - 1] ?? ''}・番号 ${p.points.length}個` + (p.foundPages?.length ? `・出てくるページ：${p.foundPages.join('・')}` : '');
+// 以前の版が符号さがしでメモ欄に自動で入れた文は、出てくるページの記録に移してメモ欄を空にする（手で書き足していたら触らない）
+const AUTO_MEMO = /^図面から見つけた符号（出てくるページ：([\d・]+)）$/;
+async function moveAutoMemo(list) {
+  for (const p of list) {
+    const m = (p.memo || '').trim().match(AUTO_MEMO);
+    if (!m) continue;
+    p.foundPages = m[1].split('・').map(Number); p.memo = ''; p.updatedAt = new Date().toISOString();
+    await Store.put('positions', p);
+  }
+}
 async function openDrawing() {
   $('#drawTitle').textContent = S.drawing.name;
   S.positions = (await Store.byIndex('positions', 'drawing', S.drawing.id)).sort(posOrder);
+  await moveAutoMemo(S.positions);
   if (!S.pos) S.pos = S.positions.find(p => p.page === S.page) || null;
   S.selPoint = null; S.undo = [];
   renderPager(); renderChips(); renderPos();
@@ -944,7 +957,7 @@ $('#symAdd').onclick = async () => {
     const page = parseInt($(`[data-p="${i}"]`).value) || s.page;
     const floors = []; for (let f = Math.min(a, z); f <= Math.max(a, z); f++) floors.push(f + 'F');
     const now = new Date().toISOString();
-    const p = { id: uid(), siteId: S.site.id, drawingId: S.drawing.id, page, name: s.name, color: COLORS[S.positions.length % COLORS.length], floors, points: [], values: {}, memo: `図面から見つけた符号（出てくるページ：${s.pages.join('・')}）`, createdAt: now, updatedAt: now };
+    const p = { id: uid(), siteId: S.site.id, drawingId: S.drawing.id, page, name: s.name, color: COLORS[S.positions.length % COLORS.length], floors, points: [], values: {}, memo: '', foundPages: s.pages, createdAt: now, updatedAt: now };
     await Store.put('positions', p); S.positions.push(p); added++;
   }
   $('#symDlg').close();
@@ -1022,7 +1035,7 @@ function renderPos() {
   $('#noPos').hidden = !!S.pos; $('#posBody').hidden = !S.pos;
   if (!S.pos) return;
   $('#posName').textContent = S.pos.name; $('#posName').style.color = S.pos.color;
-  $('#posMeta').textContent = `${S.pos.floors[0] ?? ''}〜${S.pos.floors[S.pos.floors.length - 1] ?? ''}・番号 ${S.pos.points.length}個`;
+  $('#posMeta').textContent = posMeta(S.pos);
   $('#memo').value = S.pos.memo || '';
   S.photos = [];
   renderGrid();
@@ -1036,7 +1049,7 @@ function renderPos() {
 function renderGrid() {
   if (!S.pos) return;
   const p = S.pos, t = $('#grid'); t.innerHTML = '';
-  $('#posMeta').textContent = `${p.floors[0] ?? ''}〜${p.floors[p.floors.length - 1] ?? ''}・番号 ${p.points.length}個`;
+  $('#posMeta').textContent = posMeta(p);
   const si = p.points.findIndex(x => x.id === S.selPoint);
   $('#selBar').hidden = si < 0;
   if (si >= 0) $('#selLabel').textContent = `${S.selFloor ? S.selFloor + ' ' : ''}${circ(si + 1)} を選択中`;
@@ -1482,7 +1495,7 @@ $('#xlsxBtn').onclick = async () => {
       ws.getColumn(1).width = 8; for (let i = 0; i < n; i++) ws.getColumn(2 + i).width = 9;
       ws.getCell('A1').value = `符号 ${p.name}`; ws.getCell('A1').font = { bold: true, size: 14 };
       ws.getCell('A2').value = `${S.site.name}　図面：${d?.name ?? ''}（${p.page}ページ）　単位：mm`; ws.getCell('A2').font = { size: 9, color: { argb: 'FF5F6A73' } };
-      if (p.memo) { ws.getCell('A3').value = `メモ：${p.memo}`; ws.getCell('A3').font = { size: 9 }; }
+      if (p.memo && !AUTO_MEMO.test(p.memo.trim())) { ws.getCell('A3').value = `メモ：${p.memo}`; ws.getCell('A3').font = { size: 9 }; }
       const hr = ws.getRow(5); hr.getCell(1).value = '階';
       p.points.forEach((_, i) => hr.getCell(2 + i).value = circ(i + 1));
       for (let c = 1; c <= last; c++) { const x = hr.getCell(c); x.font = { bold: true }; x.fill = head; x.border = box; x.alignment = { horizontal: 'center' }; }
