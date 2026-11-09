@@ -80,7 +80,7 @@
     </div>
     <footer class="homefoot">
       <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-      <p class="note small">アプリの版：<span id="appVer">v52</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
+      <p class="note small">アプリの版：<span id="appVer">v53</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
     </footer>
   </main>
 </section>
@@ -274,6 +274,11 @@
   <div class="stack" id="symMain">
     <h2>図面から符号をさがす</h2>
     <p id="symMsg" class="note"></p>
+    <div id="symOcr" class="symocr" hidden>
+      <button type="button" id="ocrView" class="primary">今見えている範囲を読む</button>
+      <button type="button" id="ocrPage">このページ全体を読む</button>
+      <button type="button" id="ocrAll">全ページを読む</button>
+    </div>
     <div id="symList" class="symlist"></div>
     <div class="row wrap">
       <button type="button" id="symAdd" class="primary" hidden>選んだ符号を追加</button>
@@ -372,6 +377,7 @@
 <script src="sync.js"></script>
 <script src="annot.js"></script>
 <script src="demo.js"></script>
+<script src="ocr.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -150,7 +150,10 @@ $('#fileIn').onchange = $('#photoIn').onchange = async e => {
     if (isPdf) {
       if (!window.pdfjsLib) throw new Error('PDFを読む部品が読み込めていません。アプリを開き直してください');
       const doc = await pdfOpen(new Uint8Array(await f.arrayBuffer())).promise;
-      pages = doc.numPages; doc.destroy();
+      pages = doc.numPages;
+      // スキャンした図面（文字のデータがない）なら、文字を読み取る部品を裏で保存しておく
+      try { const tc = await (await doc.getPage(1)).getTextContent(); if (tc.items.length < 20) OCR.prefetch(); } catch (e) {}
+      doc.destroy();
     }
     const d = { id: uid(), name: f.name.replace(/\.[^.]+$/, ''), type: isPdf ? 'pdf' : 'image', pages, lastPage: 1 };
     await Store.put('files', { id: d.id, blob: f });
@@ -682,29 +685,82 @@ function renderSymAll() {
 }
 $('#findSym').onclick = async () => {
   const d = S.drawing, msg = $('#symMsg'), list = $('#symList');
-  list.innerHTML = ''; $('#symAdd').hidden = true; $('#symAll').hidden = true; symPrevClose(); $('#symDlg').showModal();
+  list.innerHTML = ''; $('#symAdd').hidden = true; $('#symAll').hidden = true; $('#symOcr').hidden = true; symPrevClose(); $('#symDlg').showModal();
   if (d.type !== 'pdf') { msg.textContent = '写真の図面からは符号をさがせません。「＋ 位置」で追加してください。'; return; }
   try {
     const pages = await pdfPagesText(d, (p, n) => msg.textContent = `図面を調べています…（${p}/${n}ページ）`);
-    if (!pages.some(p => p.items.length > 20)) { msg.textContent = 'この図面には文字のデータが入っていません（スキャンした図面のようです）。「＋ 位置」で追加してください。'; return; }
-    symPages = pages;
-    symFound = findSymbols(pages).map(s => ({ ...s, floors: guessFloors(pages[s.page - 1].text, s.name) }));
-    if (!symFound.length) { msg.textContent = '符号が見つかりませんでした。「＋ 位置」で追加してください。'; return; }
-    msg.textContent = `${symFound.length}個見つかりました。「見る」で図面の場所を確かめ、ページと階の範囲を直してから追加してください。`;
-    symFound.forEach((s, i) => {
-      const exists = S.positions.some(p => p.name === s.name && p.drawingId === d.id);
-      const opts = pages.map(({ page: n }) => `<option value="${n}" ${n === s.page ? 'selected' : ''}>${n}${s.pages.includes(n) ? ' ●' : ''}</option>`).join('');
-      const row = document.createElement('div'); row.className = 'symrow' + (exists ? ' done' : '');
-      row.innerHTML = `<input type="checkbox" ${exists ? 'disabled' : 'checked'} data-i="${i}" id="sym${i}" aria-label="${esc(s.name)}を追加する">
-        <label for="sym${i}"><b>${esc(s.name)}</b><br><span class="meta">${exists ? '登録済み' : '出てくるページ：' + s.pages.join('・')}</span></label>
-        <button type="button" class="chip" data-v="${i}">見る</button>
-        <span class="pg"><select data-p="${i}" aria-label="${esc(s.name)}のページ" ${exists ? 'disabled' : ''}>${opts}</select>ページ</span>
-        <span class="fl"><input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[0]}" data-f="${i}" aria-label="${esc(s.name)}の開始階" ${exists ? 'disabled' : ''}>〜<input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[1]}" data-t="${i}" aria-label="${esc(s.name)}の終了階" ${exists ? 'disabled' : ''}>F</span>`;
-      list.append(row);
-    });
-    $('#symAdd').hidden = false; renderSymAll();
+    if (!pages.some(p => p.items.length > 20)) {
+      // スキャンした図面：端末の中で文字を読み取ってさがす
+      msg.textContent = 'この図面には文字のデータが入っていません（スキャンした図面のようです）。端末の中で文字を読み取って符号をさがせます。符号が書いてある辺りを拡大してから「今見えている範囲を読む」を押すと、速くて正確です。';
+      $('#ocrAll').textContent = `全ページを読む（${pages.length}ページ）`; $('#ocrAll').hidden = pages.length < 2;
+      $('#symOcr').hidden = false; OCR.prefetch();
+      return;
+    }
+    showSymResults(pages);
   } catch (err) { msg.textContent = '図面を読めませんでした：' + (err.message || err); }
 };
+// 見つかった符号の一覧を出す（PDFの文字からでも、読み取った文字からでも同じ）
+function showSymResults(pages, ocr) {
+  const d = S.drawing, msg = $('#symMsg'), list = $('#symList');
+  list.innerHTML = ''; symPages = pages;
+  symFound = findSymbols(pages).map(s => ({ ...s, floors: guessFloors(pages[s.page - 1].text, s.name) }));
+  if (!symFound.length) {
+    msg.textContent = ocr ? '読み取った文字の中に符号が見つかりませんでした。符号の辺りをもっと拡大して「今見えている範囲を読む」を試すか、「＋ 位置」で追加してください。' : '符号が見つかりませんでした。「＋ 位置」で追加してください。';
+    if (ocr) $('#symOcr').hidden = false;
+    return;
+  }
+  msg.textContent = `${symFound.length}個見つかりました。` + (ocr ? '読み取りは間違えることがあります。' : '') + '「見る」で図面の場所を確かめ、ページと階の範囲を直してから追加してください。';
+  symFound.forEach((s, i) => {
+    const exists = S.positions.some(p => p.name === s.name && p.drawingId === d.id);
+    const opts = pages.map(({ page: n }) => `<option value="${n}" ${n === s.page ? 'selected' : ''}>${n}${s.pages.includes(n) ? ' ●' : ''}</option>`).join('');
+    const row = document.createElement('div'); row.className = 'symrow' + (exists ? ' done' : '');
+    row.innerHTML = `<input type="checkbox" ${exists ? 'disabled' : 'checked'} data-i="${i}" id="sym${i}" aria-label="${esc(s.name)}を追加する">
+      <label for="sym${i}"><b>${esc(s.name)}</b><br><span class="meta">${exists ? '登録済み' : '出てくるページ：' + s.pages.join('・')}</span></label>
+      <button type="button" class="chip" data-v="${i}">見る</button>
+      <span class="pg"><select data-p="${i}" aria-label="${esc(s.name)}のページ" ${exists ? 'disabled' : ''}>${opts}</select>ページ</span>
+      <span class="fl"><input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[0]}" data-f="${i}" aria-label="${esc(s.name)}の開始階" ${exists ? 'disabled' : ''}>〜<input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[1]}" data-t="${i}" aria-label="${esc(s.name)}の終了階" ${exists ? 'disabled' : ''}>F</span>`;
+    list.append(row);
+  });
+  $('#symAdd').hidden = false; renderSymAll();
+}
+// スキャンした図面の文字を読み取る。mode：view＝今見えている範囲／page＝このページ全体／all＝全ページ
+let ocrBusy = false;
+async function ocrRun(mode) {
+  if (ocrBusy) return; ocrBusy = true;
+  const d = S.drawing, msg = $('#symMsg'); $('#symOcr').hidden = true;
+  try {
+    const doc = await getPdf(d), n = doc.numPages;
+    const pages = Array.from({ length: n }, (_, i) => ({ page: i + 1, items: [], text: '' }));
+    const targets = mode === 'all' ? pages.map(p => p.page) : [S.page];
+    for (const [ti, p] of targets.entries()) {
+      const pg = await doc.getPage(p), base = pg.getViewport({ scale: 1 });
+      let x0 = 0, y0 = 0, x1 = base.width, y1 = base.height;
+      if (mode === 'view' && V.k) { // 画面に見えている範囲を、PDFの1倍の座標に直す
+        const r = stage.getBoundingClientRect(), f = V.s * V.k;
+        x0 = Math.max(0, -V.x / f); y0 = Math.max(0, -V.y / f);
+        x1 = Math.min(base.width, (r.width - V.x) / f); y1 = Math.min(base.height, (r.height - V.y) / f);
+      }
+      const w = x1 - x0, h = y1 - y0;
+      // 文字が読みやすい細かさで描く。読み取りの部品は大きすぎる画像だと何も読めないので、長い辺3200ドット・合計750万ドットまで
+      const k = Math.min(6, 3200 / Math.max(w, h), Math.sqrt(7.5e6 / (w * h)));
+      const c = document.createElement('canvas'); c.width = Math.ceil(w * k); c.height = Math.ceil(h * k);
+      const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+      await pg.render({ canvasContext: g, viewport: pg.getViewport({ scale: k, offsetX: -x0 * k, offsetY: -y0 * k }) }).promise;
+      const head = `文字を読み取っています…${targets.length > 1 ? `（${ti + 1}/${targets.length}ページ）` : ''}`;
+      msg.textContent = head + '（準備中）';
+      const res = await OCR.read(c, k, x0, y0, (pr, st) => { if (pr != null) msg.textContent = `${head} ${Math.round(pr * 100)}%`; else if (st?.startsWith('丸')) msg.textContent = `${head} ${st}`; });
+      pages[p - 1] = { page: p, ...res };
+    }
+    showSymResults(pages, true);
+  } catch (err) {
+    msg.textContent = '文字を読み取れませんでした：' + (err.message || err) + (navigator.onLine === false ? '（読み取りの部品がまだ保存されていません。電波のある所で一度使ってください）' : '');
+    $('#symOcr').hidden = false;
+  } finally { ocrBusy = false; }
+}
+$('#ocrView').onclick = () => ocrRun('view');
+$('#ocrPage').onclick = () => ocrRun('page');
+$('#ocrAll').onclick = () => ocrRun('all');
+$('#symDlg').addEventListener('close', () => { if (!ocrBusy) OCR.end(); }); // 読み取りの部品はメモリを使うので、閉じたら片付ける
 $('#symList').addEventListener('change', e => {
   if (e.target.matches('input[type=checkbox]')) renderSymAll();
   // ページを変えたら、そのページの書き方から階を推測しなおす
