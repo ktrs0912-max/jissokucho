@@ -3,7 +3,9 @@ const $ = s => document.querySelector(s);
 const CIRC = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚';
 const circ = n => CIRC[n - 1] || `(${n})`;
 const COLORS = ['#c42f26', '#1f6fb2', '#2f8a3b', '#a54db8', '#d07a00', '#0f8b8d'];
-const PDF_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+// PDFを読む部品はアプリの中（lib/pdfjs）に入れてある。日本語の文字の対応表（cmaps）もいっしょ
+const PDF_WORKER = 'lib/pdfjs/pdf.worker.min.js';
+const pdfOpen = data => pdfjsLib.getDocument({ data, cMapUrl: 'lib/pdfjs/cmaps/', cMapPacked: true });
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
 
 const S = { site: null, drawing: null, page: 1, pos: null, positions: [], selPoint: null, selFloor: null, addMode: true, undo: [], photos: [] };
@@ -128,8 +130,8 @@ $('#fileIn').onchange = $('#photoIn').onchange = async e => {
     const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
     let pages = 1;
     if (isPdf) {
-      if (!window.pdfjsLib) throw new Error('PDFを読む部品がまだ読み込めていません。電波のある所で一度アプリを開いてください');
-      const doc = await pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) }).promise;
+      if (!window.pdfjsLib) throw new Error('PDFを読む部品が読み込めていません。アプリを開き直してください');
+      const doc = await pdfOpen(new Uint8Array(await f.arrayBuffer())).promise;
       pages = doc.numPages; doc.destroy();
     }
     const d = { id: uid(), name: f.name.replace(/\.[^.]+$/, ''), type: isPdf ? 'pdf' : 'image', pages, lastPage: 1 };
@@ -157,7 +159,7 @@ const V = { s: 1, x: 0, y: 0, w: 0, h: 0 };
 async function getPdf(d) {
   if (pdfCache.has(d.id)) return pdfCache.get(d.id);
   const rec = await Store.get('files', d.id);
-  const p = pdfjsLib.getDocument({ data: new Uint8Array(await rec.blob.arrayBuffer()) }).promise;
+  const p = pdfOpen(new Uint8Array(await rec.blob.arrayBuffer())).promise;
   pdfCache.set(d.id, p); return p;
 }
 // ページを素早く切り替えても、最後に選んだページだけを描く（裏の別キャンバスに描いてから差し替え）
@@ -169,7 +171,7 @@ async function renderPage() {
   try {
     const tmp = document.createElement('canvas');
     if (d.type === 'pdf') {
-      if (!window.pdfjsLib) throw new Error('PDFを読む部品が読み込めていません。電波のある所で一度アプリを開いてください');
+      if (!window.pdfjsLib) throw new Error('PDFを読む部品が読み込めていません。アプリを開き直してください');
       const doc = await getPdf(d), page = await doc.getPage(S.page);
       if (seq !== renderSeq) return;
       const base = page.getViewport({ scale: 1 });
@@ -603,11 +605,11 @@ function findSymbols(pages) {
   }).sort((a, b) => a.page - b.page || a.name.localeCompare(b.name, 'ja', { numeric: true }));
 }
 // そのページの「2～7F」「3F」のような書き方から階の範囲を推測する
-const FLOOR_RE = '(?<![A-Z0-9.])(\\d{1,2})(?:\\s*[～~〜\\-・,、]\\s*(\\d{1,2}))?\\s*[F階]';
+const FLOOR_RE = '(?<![A-Z0-9.])(\\d{1,2})(?:\\s*[～~〜̃˜\\-・,、]\\s*(\\d{1,2}))?\\s*[F階]';
 // 「4~9F 11~22F」「5~9F、22F」のように並んでいれば、一番下〜一番上にまとめる
 const FLOORS_RE = `(${FLOOR_RE}(?:\\s*[,、]?\\s*${FLOOR_RE.replace(/\((?!\?)/g, '(?:')})*)`;
 const floorPair = m => {
-  const ns = [...m[1].matchAll(/(\d{1,2})(?:\s*[～~〜\-・,、]\s*(\d{1,2}))?\s*[F階]/gi)].flatMap(x => x[2] ? [+x[1], +x[2]] : [+x[1]]);
+  const ns = [...m[1].matchAll(/(\d{1,2})(?:\s*[～~〜̃˜\-・,、]\s*(\d{1,2}))?\s*[F階]/gi)].flatMap(x => x[2] ? [+x[1], +x[2]] : [+x[1]]);
   const a = Math.min(...ns), b = Math.max(...ns);
   return ns.length && a >= 1 && b <= 60 ? [a, b] : null;
 };
@@ -629,7 +631,7 @@ function guessFloors(text, name) {
     if (ti && floorPair(ti)) return floorPair(ti);
   }
   // 「2～7F」のような範囲（前後が英数字の型番 PS50FAA などは除く）
-  const m = t.match(/(?<![A-Z0-9])(\d{1,2})\s*[～~〜\-・]\s*(\d{1,2})\s*[F階](?![A-Z])/i);
+  const m = t.match(/(?<![A-Z0-9])(\d{1,2})\s*[～~〜̃˜\-・]\s*(\d{1,2})\s*[F階](?![A-Z])/i);
   if (m && +m[1] <= +m[2] && +m[2] <= 60) return [+m[1], +m[2]];
   // 「1F」「5F」…がいくつも書いてあれば、その一番下〜一番上
   const fl = [...t.matchAll(/(?<![A-Z0-9])(\d{1,2})\s*[F階](?![A-Z])/gi)].map(x => +x[1]).filter(n => n >= 1 && n <= 60);
