@@ -242,3 +242,33 @@ dialog label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var
 .syncbanner{margin:8px 12px 0;border-radius:14px;box-shadow:var(--shadow);top:8px}
 .hometop{padding-left:max(14px,calc((100% - 1120px) / 2 + 18px));padding-right:max(14px,calc((100% - 1120px) / 2 + 18px))}
 .symocr{display:flex;flex-direction:column;gap:8px}
+
+/* ===== フォルダ ===== */
+.fico{flex:0 0 auto;width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font-style:normal;background:color-mix(in srgb,var(--sun) 22%,var(--surface));color:#c98a12}
+.fico svg{width:28px;height:28px;fill:currentColor}
+.fico.big{width:52px;height:52px}
+.fico.out{background:var(--surface2);color:var(--muted);font-size:20px;font-weight:800}
+.foldercard{background:linear-gradient(135deg,color-mix(in srgb,var(--sun) 10%,var(--surface)),var(--surface) 60%)}
+.foldercard .peek{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.newsitehead{display:flex;align-items:center;gap:14px;min-width:0}
+.newsitehead h2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.newsiteform #addFolder{flex:0 0 auto}
+.folderbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:-4px}
+/* 現場のカードの「…」（フォルダに入れる） */
+.siteli{position:relative}
+.siteli .sitecard{padding-right:56px}
+.siteli .more{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:40px;height:40px;min-height:40px;padding:0;border-radius:12px;border:0;background:transparent;color:var(--muted);font-size:22px;letter-spacing:-1px;box-shadow:none}
+.siteli .more:hover{background:var(--surface2);color:var(--ink)}
+.sitecard .fchip{display:none;align-items:center;gap:3px;color:#b07a10!important;background:color-mix(in srgb,var(--sun) 16%,var(--surface))!important;border-color:transparent!important}
+.sitecard .fchip svg{width:13px;height:13px;fill:currentColor}
+.searching .sitecard .fchip{display:inline-flex}
+/* フォルダを選ぶ画面 */
+.movelist{display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow:auto}
+.moveopt{justify-content:flex-start;gap:12px;min-height:60px;text-align:left;border-radius:14px;white-space:normal}
+.moveopt .fico{width:38px;height:38px;border-radius:11px}
+.moveopt .fico svg{width:22px;height:22px}
+.moveopt span{flex:1;font-weight:800}
+.moveopt small{color:var(--accent);font-weight:700}
+.moveopt.here{opacity:.6}
+#moveDlg{width:min(94vw,440px)}
+@media (max-width:560px){.newsiteform{flex-wrap:wrap}.newsiteform input{flex:1 1 100%}.newsiteform button{flex:1 1 0}}

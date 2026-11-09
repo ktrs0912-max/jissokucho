@@ -28,18 +28,32 @@
     <button id="syncChip" type="button" class="syncchip" hidden><i></i><span></span></button>
   </header>
   <main class="homemain">
+    <!-- フォルダの中にいる時の帯 -->
+    <div id="folderBar" class="folderbar" hidden>
+      <button id="folderUp" type="button" class="sm">‹ すべての現場</button>
+      <span class="grow"></span>
+      <button id="folderRename" type="button" class="sm">名前を変える</button>
+      <button id="folderDel" type="button" class="sm danger">フォルダを消す</button>
+    </div>
     <section class="newsite">
-      <div>
-        <h2>現場</h2>
-        <p id="siteCount" class="note"></p>
+      <div class="newsitehead">
+        <i id="homeFolderIcon" class="fico big" hidden></i>
+        <div>
+          <h2 id="homeTitle">現場</h2>
+          <p id="siteCount" class="note"></p>
+        </div>
       </div>
       <form id="newSiteForm" class="newsiteform">
         <input id="newSiteName" type="text" placeholder="現場の名前（例：みどりハイツ）" aria-label="新しい現場の名前" autocomplete="off">
         <button id="addSite" class="primary" type="submit">＋ 現場を追加</button>
+        <button id="addFolder" type="button" class="soft">＋ フォルダ</button>
       </form>
     </section>
     <input id="siteSearch" class="sitesearch" type="search" placeholder="現場をさがす" aria-label="現場をさがす" hidden>
+    <ul id="folderList" class="sitegrid"></ul>
+    <h2 id="looseTitle" class="sectitle" hidden>フォルダに入っていない現場</h2>
     <ul id="siteList" class="sitegrid"></ul>
+    <p id="folderEmpty" class="note center" hidden>このフォルダにはまだ現場がありません。上で現場を追加するか、ほかの現場の「…」から入れてください。</p>
     <p id="siteNone" class="note center" hidden>見つかりませんでした</p>
     <div id="homeEmpty" class="hello" hidden>
       <img src="icon-192.png" alt="" width="72" height="72">
@@ -80,7 +94,7 @@
     </div>
     <footer class="homefoot">
       <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-      <p class="note small">アプリの版：<span id="appVer">v53</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
+      <p class="note small">アプリの版：<span id="appVer">v54</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
     </footer>
   </main>
 </section>
@@ -205,6 +219,28 @@
       <button value="cancel" formnovalidate>やめる</button>
     </div>
   </form>
+</dialog>
+
+<!-- 名前を入れる（フォルダを作る・名前を変える） -->
+<dialog id="nameDlg">
+  <form method="dialog" class="stack">
+    <h2 id="nameTitle"></h2>
+    <input id="nameIn" type="text" autocomplete="off" aria-label="名前">
+    <div class="row">
+      <button value="ok" class="primary" id="nameOk">決める</button>
+      <button value="cancel" formnovalidate>やめる</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 現場をフォルダに入れる・出す -->
+<dialog id="moveDlg">
+  <div class="stack">
+    <h2 id="moveTitle"></h2>
+    <div id="moveList" class="movelist"></div>
+    <button type="button" id="moveNew" class="soft">＋ 新しいフォルダを作って入れる</button>
+    <button type="button" id="moveCancel">やめる</button>
+  </div>
 </dialog>
 
 <!-- 確認 -->

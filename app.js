@@ -38,13 +38,14 @@ function show(v) {
   ['vHome', 'vSite', 'vDraw'].forEach(id => $('#' + id).hidden = id !== v);
 }
 async function go(view, push = true) {
-  if (push) history.pushState({ view, site: S.site?.id, drawing: S.drawing?.id }, '');
+  if (push) history.pushState({ view, site: S.site?.id, drawing: S.drawing?.id, folder: S.folder }, '');
   if (view === 'home') { flushSave(); S.site = null; await renderHome(); show('vHome'); }
   if (view === 'site') { flushSave(); S.drawing = null; await renderSite(); show('vSite'); }
   if (view === 'draw') { show('vDraw'); await openDrawing(); }
 }
 window.addEventListener('popstate', e => {
   const v = e.state?.view || 'home';
+  if (v === 'home') { S.folder = e.state?.folder || null; $('#siteSearch').value = ''; }
   if (v === 'home' || !S.site) go('home', false);
   else if (v === 'site' || !S.drawing) go('site', false);
   else go('draw', false);
@@ -55,32 +56,159 @@ document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => history.ba
 // 現場ごとの色（名前から決める。いつも同じ色になる）
 const siteColor = name => COLORS[[...name].reduce((h, c) => (h * 31 + c.codePointAt(0)) >>> 0, 7) % COLORS.length];
 const shortDate = iso => { const d = new Date(iso), now = new Date(); return d.toDateString() === now.toDateString() ? d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ja-JP', d.getFullYear() === now.getFullYear() ? { month: 'numeric', day: 'numeric' } : { year: 'numeric', month: 'numeric', day: 'numeric' }); };
+/* ---------- フォルダ：現場をまとめる ----------
+   フォルダは現場と同じ保存場所（sites）に kind:'folder' として入れる（ドライブ同期・バックアップにそのまま乗る）。
+   現場の folderId に、入っているフォルダの id を持つ。 */
+S.folder = null; // ホームで開いているフォルダ
+const isFolder = r => r?.kind === 'folder';
+const FOLDER_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.6c.6 0 1.2.3 1.6.7L12 7h6.5A2.5 2.5 0 0 1 21 9.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>';
+let homeCache = { folders: [], sites: [] };
 async function renderHome() {
-  const sites = (await Store.all('sites')).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const all = await Store.all('sites');
+  const folders = all.filter(isFolder).sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
+  const sites = all.filter(r => !isFolder(r)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const fids = new Set(folders.map(f => f.id)), fname = new Map(folders.map(f => [f.id, f.name]));
+  const folderOf = st => st.folderId && fids.has(st.folderId) ? st.folderId : null; // 消えたフォルダに入っていた現場は外に出す
+  if (S.folder && !fids.has(S.folder)) S.folder = null;
+  const cur = folders.find(f => f.id === S.folder);
+  homeCache = { folders, sites };
   const posCount = new Map();
   for (const p of await Store.all('positions')) posCount.set(p.siteId, (posCount.get(p.siteId) || 0) + 1);
-  const ul = $('#siteList'); ul.innerHTML = '';
-  sites.forEach(s => {
+  // フォルダのカード（いちばん上の階層だけ）
+  const fl = $('#folderList'); fl.innerHTML = '';
+  if (!cur) folders.forEach(f => {
+    const inside = sites.filter(st => folderOf(st) === f.id), latest = inside[0]?.updatedAt || f.updatedAt;
     const li = document.createElement('li'), b = document.createElement('button');
-    b.type = 'button'; b.className = 'sitecard'; b.dataset.name = s.name.toLowerCase();
-    const n = posCount.get(s.id) || 0;
-    b.innerHTML = `<i class="badge" style="--c:${siteColor(s.name)}">${esc([...s.name][0] || '？')}</i>
-      <span class="sbody"><b>${esc(s.name)}</b><span class="meta"><span>図面 ${s.drawings.length}枚</span><span>位置 ${n}</span><span>更新 ${shortDate(s.updatedAt)}</span></span></span>
+    b.type = 'button'; b.className = 'sitecard foldercard';
+    b.innerHTML = `<i class="fico">${FOLDER_SVG}</i>
+      <span class="sbody"><b>${esc(f.name)}</b><span class="meta"><span>現場 ${inside.length}件</span>${inside.length ? `<span>更新 ${shortDate(latest)}</span>` : ''}</span>
+      <span class="peek">${inside.slice(0, 3).map(st => esc(st.name)).join('・')}${inside.length > 3 ? ' ほか' : ''}</span></span>
       <span class="chev" aria-hidden="true">›</span>`;
-    b.onclick = () => { S.site = s; go('site'); };
-    li.append(b); ul.append(li);
+    b.onclick = () => openFolder(f.id);
+    li.append(b); fl.append(li);
   });
-  $('#homeEmpty').hidden = sites.length > 0;
-  $('#siteCount').textContent = sites.length ? `${sites.length}件の現場` : 'まだ現場がありません';
-  $('#siteSearch').hidden = sites.length < 6; filterSites();
+  // 現場のカード。検索の時はフォルダの中の現場も出すので、全部作っておいて表示を切り替える
+  const ul = $('#siteList'); ul.innerHTML = '';
+  sites.forEach(st => {
+    const li = document.createElement('li'), b = document.createElement('button'), fid = folderOf(st);
+    li.className = 'siteli'; li.dataset.folder = fid || ''; li.dataset.name = st.name.toLowerCase();
+    b.type = 'button'; b.className = 'sitecard';
+    const n = posCount.get(st.id) || 0;
+    b.innerHTML = `<i class="badge" style="--c:${siteColor(st.name)}">${esc([...st.name][0] || '？')}</i>
+      <span class="sbody"><b>${esc(st.name)}</b><span class="meta">${fid ? `<span class="fchip">${FOLDER_SVG}${esc(fname.get(fid))}</span>` : ''}<span>図面 ${st.drawings.length}枚</span><span>位置 ${n}</span><span>更新 ${shortDate(st.updatedAt)}</span></span></span>`;
+    b.onclick = () => { S.site = st; go('site'); };
+    const more = document.createElement('button');
+    more.type = 'button'; more.className = 'more'; more.textContent = '…'; more.setAttribute('aria-label', `${st.name}をフォルダに入れる・移す`);
+    more.onclick = () => moveSite(st);
+    li.append(b, more); ul.append(li);
+  });
+  // 見出し・件数・ボタン
+  $('#folderBar').hidden = !cur; $('#addFolder').hidden = !!cur;
+  $('#homeTitle').textContent = cur ? cur.name : '現場';
+  $('#homeFolderIcon').hidden = !cur; $('#homeFolderIcon').innerHTML = FOLDER_SVG;
+  $('#newSiteName').placeholder = cur ? `「${cur.name}」に入れる現場の名前` : '現場の名前（例：みどりハイツ）';
+  const here = cur ? sites.filter(st => folderOf(st) === cur.id).length : sites.length;
+  $('#siteCount').textContent = cur ? (here ? `${here}件の現場` : 'まだ現場がありません') : sites.length || folders.length ? `${sites.length}件の現場` + (folders.length ? `・フォルダ ${folders.length}個` : '') : 'まだ現場がありません';
+  $('#homeEmpty').hidden = !!cur || sites.length > 0 || folders.length > 0;
+  $('#siteSearch').hidden = sites.length < 6;
+  $('#siteSearch').placeholder = cur ? `「${cur.name}」の中をさがす` : '現場をさがす（フォルダの中もさがします）';
+  filterSites();
   renderBackupInfo();
 }
 function filterSites() {
-  const q = $('#siteSearch').value.trim().toLowerCase();
-  let shown = 0;
-  $('#siteList').querySelectorAll('li').forEach(li => { const on = !q || li.firstChild.dataset.name.includes(q); li.hidden = !on; shown += on; });
+  const q = $('#siteSearch').value.trim().toLowerCase(), cur = S.folder;
+  const main = $('.homemain'); main.classList.toggle('searching', !!q && !cur);
+  let shown = 0, loose = 0;
+  $('#siteList').querySelectorAll('li').forEach(li => {
+    const f = li.dataset.folder;
+    const inScope = cur ? f === cur : (q ? true : !f);
+    const on = inScope && (!q || li.dataset.name.includes(q));
+    li.hidden = !on; shown += on; if (!cur && !f) loose++;
+  });
+  $('#folderList').hidden = !!q || !!cur;
+  $('#looseTitle').hidden = !!cur || !!q || !homeCache.folders.length || !loose;
   $('#siteNone').hidden = !q || shown > 0;
+  $('#folderEmpty').hidden = !cur || !!q || shown > 0;
 }
+function openFolder(id) {
+  S.folder = id; $('#siteSearch').value = '';
+  history.pushState({ view: 'home', folder: id }, '');
+  renderHome(); window.scrollTo(0, 0);
+}
+$('#folderUp').onclick = () => {
+  if (history.state?.folder) history.back();
+  else { S.folder = null; $('#siteSearch').value = ''; renderHome(); }
+};
+// 名前を入れる小さな画面
+function askName(title, value = '') {
+  return new Promise(res => {
+    const d = $('#nameDlg'); $('#nameTitle').textContent = title; $('#nameIn').value = value;
+    d.querySelector('form').onsubmit = e => { e.preventDefault(); const v = $('#nameIn').value.trim(); d.close(); res(e.submitter?.value === 'ok' && v ? v : null); };
+    d.oncancel = () => res(null);
+    d.showModal(); $('#nameIn').focus(); $('#nameIn').select();
+  });
+}
+async function newFolder(name) {
+  const now = new Date().toISOString();
+  const f = { id: uid(), kind: 'folder', name, drawings: [], createdAt: now, updatedAt: now };
+  await Store.put('sites', f); return f;
+}
+$('#addFolder').onclick = async () => {
+  const name = await askName('新しいフォルダ');
+  if (!name) return;
+  const f = await newFolder(name);
+  toast(`フォルダ「${name}」を作りました。現場の「…」から入れられます`);
+  openFolder(f.id);
+};
+$('#folderRename').onclick = async () => {
+  const f = homeCache.folders.find(x => x.id === S.folder); if (!f) return;
+  const name = await askName('フォルダの名前を変える', f.name);
+  if (!name || name === f.name) return;
+  f.name = name; f.updatedAt = new Date().toISOString(); await Store.put('sites', f);
+  renderHome(); toast('名前を変えました');
+};
+$('#folderDel').onclick = async () => {
+  const f = homeCache.folders.find(x => x.id === S.folder); if (!f) return;
+  const inside = homeCache.sites.filter(st => st.folderId === f.id);
+  if (!await ask(`フォルダ「${f.name}」を消します。` + (inside.length ? `中の現場（${inside.length}件）は消さずに、フォルダの外に出します。` : ''))) return;
+  const now = new Date().toISOString();
+  for (const st of inside) { delete st.folderId; st.updatedAt = now; await Store.put('sites', st); }
+  await Store.del('sites', f.id);
+  toast('フォルダを消しました');
+  $('#folderUp').onclick();
+};
+// 現場をフォルダに入れる・移す・出す
+let moving = null;
+function moveSite(st) {
+  moving = st;
+  $('#moveTitle').textContent = `「${st.name}」をどこに入れますか`;
+  const box = $('#moveList'); box.innerHTML = '';
+  const add = (label, fid, here) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'moveopt' + (here ? ' here' : '');
+    b.innerHTML = (fid ? `<i class="fico">${FOLDER_SVG}</i>` : '<i class="fico out">↩</i>') + `<span>${esc(label)}</span>` + (here ? '<small>今ここ</small>' : '');
+    b.disabled = here; b.onclick = () => doMove(fid);
+    box.append(b);
+  };
+  homeCache.folders.forEach(f => add(f.name, f.id, st.folderId === f.id));
+  if (st.folderId && homeCache.folders.some(f => f.id === st.folderId)) add('フォルダから出す', null, false);
+  if (!homeCache.folders.length) box.innerHTML = '<p class="note">まだフォルダがありません。下のボタンで作れます。</p>';
+  $('#moveDlg').showModal();
+}
+async function doMove(fid) {
+  const st = moving; if (!st) return;
+  if (fid) st.folderId = fid; else delete st.folderId;
+  st.updatedAt = new Date().toISOString();
+  await Store.put('sites', st);
+  $('#moveDlg').close(); moving = null;
+  toast(fid ? `「${homeCache.folders.find(f => f.id === fid)?.name}」に入れました` : 'フォルダから出しました');
+  renderHome();
+}
+$('#moveNew').onclick = async () => {
+  const st = moving; $('#moveDlg').close();
+  const name = await askName('新しいフォルダ'); if (!name) return;
+  const f = await newFolder(name); homeCache.folders.push(f); moving = st; await doMove(f.id);
+};
+$('#moveCancel').onclick = () => { $('#moveDlg').close(); moving = null; };
 $('#siteSearch').oninput = filterSites;
 $('#demoBtn').onclick = async () => {
   const b = $('#demoBtn'); b.disabled = true; b.textContent = '見本を用意しています…';
@@ -97,7 +225,7 @@ $('#newSiteForm').onsubmit = async e => {
   const name = $('#newSiteName').value.trim();
   if (!name) { $('#newSiteName').focus(); return; }
   const now = new Date().toISOString();
-  const s = { id: uid(), name, drawings: [], createdAt: now, updatedAt: now };
+  const s = { id: uid(), name, drawings: [], createdAt: now, updatedAt: now, ...(S.folder ? { folderId: S.folder } : {}) };
   await Store.put('sites', s); persist();
   $('#newSiteName').value = '';
   S.site = s; go('site');
