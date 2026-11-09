@@ -1184,7 +1184,7 @@ $('#pngBtn').onclick = () => {
 };
 
 /* ---------- Excel（実測値記入表） ---------- */
-const EXCELJS = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+const EXCELJS = 'lib/exceljs/exceljs.min.js'; // Excelを作る部品（アプリの中に入れてある）
 const DIFF_LIMIT = 20; // 差がこれ以上なら赤字（mm）
 function loadScript(src) {
   return new Promise((res, rej) => { const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = () => rej(new Error('Excelを作る部品を読み込めませんでした。電波のある所でもう一度お試しください')); document.head.append(s); });
@@ -1498,4 +1498,13 @@ if (Sync.connected()) Sync.syncNow();
 /* ---------- 起動 ---------- */
 history.replaceState({ view: 'home' }, '');
 renderHome();
-if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // 初めて開いた時は、書体の文字ファイルが保存の仕組みより先に読まれるので、読んだ分をあとから保存しておく
+  navigator.serviceWorker.ready.then(async () => {
+    const urls = performance.getEntriesByType('resource').map(r => r.name).filter(u => u.includes('/lib/fonts/files/'));
+    if (!urls.length || !window.caches) return;
+    const c = await caches.open('jissokucho-fonts');
+    for (const u of urls) if (!await c.match(u)) await c.add(u).catch(() => {});
+  }).catch(() => {});
+}
