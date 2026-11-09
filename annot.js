@@ -12,9 +12,19 @@ const clone = it => JSON.parse(JSON.stringify(it));
 const measure = document.createElement('canvas').getContext('2d');
 let annotClipboard = null; // コピーした線・文字。図面⇔写真の間でも貼り付けられる
 
+// コの字（寸法の範囲）か：[足1, 端A, 端B, 足2] の4点で、両方の足が同じ向き
+function isBr(it) {
+  if (!it || it.t === 'text' || it.pts?.length !== 4) return false;
+  if (it.br) return true;
+  const [l1, a, b, l2] = it.pts;
+  return Math.abs((l1[0] - a[0]) - (l2[0] - b[0])) < 1e-3 && Math.abs((l1[1] - a[1]) - (l2[1] - b[1])) < 1e-3;
+}
+const BR_DOT = 1.7; // コの字の角の点の半径（線の太さの何倍か）
 function itemSvg(it, W, H) {
   if (it.t === 'text') return `<text x="${it.x * W}" y="${it.y * H}" font-size="${it.f * W}" font-weight="700" fill="${it.c}" stroke="#fff" stroke-width="${it.f * W * 0.18}" paint-order="stroke" dominant-baseline="middle" font-family="sans-serif">${esc(it.s)}</text>`;
-  return `<path d="${strokeD(it, W, H)}" fill="none" stroke="${it.c}" stroke-width="${it.w * W}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const path = `<path d="${strokeD(it, W, H)}" fill="none" stroke="${it.c}" stroke-width="${it.w * W}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  // コの字は、線と足が出会う2つの角に点を打つ
+  return isBr(it) ? path + [it.pts[1], it.pts[2]].map(p => `<circle cx="${p[0] * W}" cy="${p[1] * H}" r="${it.w * W * BR_DOT}" fill="${it.c}"/>`).join('') : path;
 }
 function drawItems(g, items, W, H) {
   items.forEach(st => {
@@ -26,6 +36,7 @@ function drawItems(g, items, W, H) {
     const pts = st.pts.length === 1 ? [st.pts[0], st.pts[0]] : st.pts;
     g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0] * W, p[1] * H) : g.moveTo(p[0] * W, p[1] * H));
     g.strokeStyle = st.c; g.lineWidth = st.w * W; g.lineCap = 'round'; g.lineJoin = 'round'; g.stroke();
+    if (isBr(st)) [st.pts[1], st.pts[2]].forEach(p => { g.beginPath(); g.arc(p[0] * W, p[1] * H, st.w * W * BR_DOT, 0, Math.PI * 2); g.fillStyle = st.c; g.fill(); });
   });
 }
 
@@ -182,12 +193,7 @@ class Annotator {
   }
   // ---- コの字の微調整 ----
   // コの字は [足1, 端A, 端B, 足2] の4点。足の向き・長さはそのままで、端を動かして作り直す
-  isBracket(it) {
-    if (!it || it.t === 'text' || it.pts.length !== 4) return false;
-    if (it.br) return true;
-    const [l1, a, b, l2] = it.pts;
-    return Math.abs((l1[0] - a[0]) - (l2[0] - b[0])) < 1e-3 && Math.abs((l1[1] - a[1]) - (l2[1] - b[1])) < 1e-3;
-  }
+  isBracket(it) { return isBr(it); }
   rebuild(it, A, B) {
     const o = [it.pts[0][0] - it.pts[1][0], it.pts[0][1] - it.pts[1][1]];
     it.pts = [[A[0] + o[0], A[1] + o[1]], A, B, [B[0] + o[0], B[1] + o[1]]];
