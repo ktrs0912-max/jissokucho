@@ -38,7 +38,7 @@
       <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
     </div>
     <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-    <p class="note small">アプリの版：<span id="appVer">v49</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v50</span>　<a href="privacy.html">プライバシーポリシー</a></p>
     <section class="card stack">
       <h2>感想を聞かせてください</h2>
       <p class="note">使ってみて、便利だったこと・困ったことを教えてください。1分で送れます。</p>
@@ -340,6 +340,15 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<!-- Google Play版以外で開いた時の案内（PLAY.only が true の時だけ出る） -->
+<div id="playGate" class="playgate" hidden>
+  <div class="card stack">
+    <h2>ピタ測は Google Play で販売しています</h2>
+    <p class="note">このアプリは、Google Play で購入したアプリから開いてお使いください。購入済みの方は、ホーム画面の「ピタ測」アイコンから開いてください。</p>
+    <a id="playLink" class="primary btnlink" href="#" rel="noopener">Google Play で見る</a>
+    <a class="note small" href="intro.html">ピタ測の紹介を見る</a>
+  </div>
+</div>
 <script src="lib/pdfjs/pdf.min.js"></script>
 <script src="store.js"></script>
 <script src="sync.js"></script>

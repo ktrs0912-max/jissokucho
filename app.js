@@ -1497,6 +1497,23 @@ Sync.onChange(st => {
 renderSync();
 if (Sync.connected()) Sync.syncNow();
 
+/* ---------- Google Play版（有料）だけで使えるようにする ---------- */
+// Playで公開したら only を true にし、pkg（パッケージ名）と url（ストアのページ）を入れる。
+// Play版から開いた時はブラウザが「android-app://パッケージ名」から来たと教えてくれるので、それを覚えておく。
+// 手元で試す時（localhost）は止めない。
+const PLAY = { only: false, pkg: '', url: '' };
+function playGate() {
+  const ref = document.referrer || '';
+  if (ref.startsWith('android-app://') && (!PLAY.pkg || ref.startsWith(`android-app://${PLAY.pkg}`))) {
+    try { localStorage.setItem('jissoku.play', '1'); } catch (e) {}
+  }
+  let ok = false; try { ok = localStorage.getItem('jissoku.play') === '1'; } catch (e) {}
+  if (!PLAY.only || ok || /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
+  const g = $('#playGate'); g.hidden = false;
+  if (PLAY.url) $('#playLink').href = PLAY.url; else $('#playLink').hidden = true;
+}
+playGate();
+
 /* ---------- 起動 ---------- */
 history.replaceState({ view: 'home' }, '');
 renderHome();
