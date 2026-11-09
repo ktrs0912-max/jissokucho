@@ -72,6 +72,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,.filebtn:focus-v
 @media (prefers-color-scheme:dark){.stage{background:#2a3539}}
 .layer{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
 .layer canvas{display:block;background:#fff;box-shadow:0 4px 18px rgba(0,0,0,.12)}
+.layer canvas.hi{position:absolute;box-shadow:none;pointer-events:none}
 .layer svg{position:absolute;left:0;top:0;overflow:visible}
 .tools{display:flex;gap:6px;padding:6px 10px;overflow-x:auto;background:var(--surface2);border-top:1px solid var(--line);border-bottom:1px solid var(--line);scrollbar-width:none}
 .tools::-webkit-scrollbar{display:none}

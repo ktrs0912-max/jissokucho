@@ -164,7 +164,7 @@ async function getPdf(d) {
 let renderSeq = 0, renderTask = null;
 async function renderPage() {
   const d = S.drawing, m = $('#stageMsg'), seq = ++renderSeq;
-  m.hidden = false; m.textContent = '図面を表示しています…';
+  m.hidden = false; m.textContent = '図面を表示しています…'; hiReset();
   try { renderTask?.cancel(); } catch (e) {}
   try {
     const tmp = document.createElement('canvas');
@@ -175,10 +175,12 @@ async function renderPage() {
       const base = page.getViewport({ scale: 1 });
       const scale = Math.min(3, 2600 / Math.max(base.width, base.height));
       const vp = page.getViewport({ scale });
+      V.k = scale; V.pg = page;
       tmp.width = Math.round(vp.width); tmp.height = Math.round(vp.height);
       renderTask = page.render({ canvasContext: tmp.getContext('2d'), viewport: vp });
       await renderTask.promise;
     } else {
+      V.pg = null;
       const rec = await Store.get('files', d.id);
       const img = await createImageBitmap(rec.blob);
       const k = Math.min(1, 3000 / Math.max(img.width, img.height));
@@ -190,7 +192,7 @@ async function renderPage() {
     V.w = cv.width; V.h = cv.height;
     svg.setAttribute('width', V.w); svg.setAttribute('height', V.h);
     svg.setAttribute('viewBox', `0 0 ${V.w} ${V.h}`);
-    m.hidden = true; fit(); drawMarks();
+    hiReset(); m.hidden = true; fit(); drawMarks();
   } catch (err) {
     if (seq !== renderSeq || err?.name === 'RenderingCancelledException') return;
     m.textContent = '図面を表示できませんでした：' + (err.message || err);
@@ -213,7 +215,39 @@ function clampPan() {
 function apply() {
   clampPan();
   layer.style.transform = `translate(${V.x}px,${V.y}px) scale(${V.s})`;
-  drawMarks();
+  drawMarks(); hiSoon();
+}
+/* 拡大した時は、見えている所だけをPDFから細かく描きなおして重ねる（線や小さい文字もくっきり） */
+const hi = $('#hi');
+let hiTimer = null, hiSeq = 0, hiTask = null;
+function hiReset() { hiSeq++; clearTimeout(hiTimer); try { hiTask?.cancel(); } catch (e) {} hi.hidden = true; }
+function hiSoon() { clearTimeout(hiTimer); hiTimer = setTimeout(hiRender, 250); }
+async function hiRender() {
+  const pg = V.pg, seq = ++hiSeq;
+  try { hiTask?.cancel(); } catch (e) {}
+  const dpr = window.devicePixelRatio || 1;
+  let f = V.s * dpr; // 図面の1点が画面の何ドットになるか
+  if (!pg || f <= 1.1 || $('#vDraw').hidden) { hi.hidden = true; return; }
+  // 画面に見えている範囲（図面の座標）。少し外側まで描いておく
+  const r = stage.getBoundingClientRect(), mg = 0.15;
+  const vw = r.width / V.s, vh = r.height / V.s, vx = -V.x / V.s, vy = -V.y / V.s;
+  const x0 = Math.max(0, vx - vw * mg), y0 = Math.max(0, vy - vh * mg);
+  const x1 = Math.min(V.w, vx + vw * (1 + mg)), y1 = Math.min(V.h, vy + vh * (1 + mg));
+  if (x1 <= x0 || y1 <= y0) return;
+  // スマホが扱えるキャンバスの大きさにおさえる（1辺4096・合計1600万ドットまで）
+  f = Math.min(f, 4096 / (x1 - x0), 4096 / (y1 - y0), Math.sqrt(16e6 / ((x1 - x0) * (y1 - y0))));
+  if (f <= 1.1) { hi.hidden = true; return; }
+  const tmp = document.createElement('canvas');
+  tmp.width = Math.ceil((x1 - x0) * f); tmp.height = Math.ceil((y1 - y0) * f);
+  const vp = pg.getViewport({ scale: V.k * f, offsetX: -x0 * f, offsetY: -y0 * f });
+  try {
+    hiTask = pg.render({ canvasContext: tmp.getContext('2d'), viewport: vp });
+    await hiTask.promise;
+  } catch (e) { return; }
+  if (seq !== hiSeq || pg !== V.pg) return;
+  hi.width = tmp.width; hi.height = tmp.height; hi.getContext('2d').drawImage(tmp, 0, 0);
+  Object.assign(hi.style, { left: x0 + 'px', top: y0 + 'px', width: (x1 - x0) + 'px', height: (y1 - y0) + 'px' });
+  hi.hidden = false;
 }
 new ResizeObserver(() => { if (!$('#vDraw').hidden) fit(); }).observe(stage);
 $('#fitBtn').onclick = fit;
