@@ -40,7 +40,7 @@
       <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
     </div>
     <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-    <p class="note small">アプリの版：<span id="appVer">v43</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v44</span></p>
     <section class="card stack">
       <h2>感想を聞かせてください</h2>
       <p class="note">使ってみて、便利だったこと・困ったことを教えてください。1分で送れます。</p>
@@ -115,8 +115,8 @@
     <label for="importIn" class="chip add filebtn">符号を取り込む</label>
     <input id="importIn" type="file" hidden>
   </div>
-  <!-- 書くモードの道具（中身は annot.js が作る） -->
-  <div id="penBar" class="penbar" hidden></div>
+  <!-- 書き込みの道具（中身は annot.js が作る）。充電式のタッチペンでなぞると書ける -->
+  <div id="penBar" class="penbar"></div>
 
   <div class="split">
     <div class="stagecol">
@@ -130,7 +130,6 @@
       </div>
       <!-- 図面の操作ボタンは図面に重ならないよう、図面のすぐ下の帯に置く -->
       <div class="tools">
-        <button id="penBtn" type="button" class="tool" aria-pressed="false">✎ 書く</button>
         <button id="modeBtn" type="button" class="tool on" aria-pressed="true">● 番号を打つ</button>
         <button id="undoBtn" type="button" class="tool">↶ 取り消し</button>
         <button id="fitBtn" type="button" class="tool">全体</button>
@@ -328,8 +327,7 @@
     </div>
   </div>
   <div class="row wrap">
-    <button id="phPen" type="button" class="sm" aria-pressed="false">✎ 書き込む</button>
-    <div id="phTools" class="annotbar" hidden></div>
+    <div id="phTools" class="annotbar"></div>
   </div>
   <p id="photoCap"></p>
   <label class="row small muted">階を変える

@@ -266,7 +266,9 @@ $('#sizeBtn').onclick = () => {
 renderSizeBtn();
 
 /* ---------- お絵描き（図面のページごとに保存。道具の中身は annot.js） ---------- */
-S.pen = false;
+// 充電式のタッチペン（Apple Pencil・Sペンなど）でなぞると書き込み、指では番号を打つ・図面を動かす
+const isPen = e => e.pointerType === 'pen';
+let penId = null; // 今書いているペン
 function drawStrokes(g, d, page, W, H) { drawItems(g, d.sketch?.[page] || [], W, H); }
 const drawAnnot = new Annotator({
   items: () => ((S.drawing.sketch ??= {})[S.page] ??= []),
@@ -284,14 +286,6 @@ const drawAnnot = new Annotator({
     drawAnnot.record(); list.splice(0); drawAnnot.clearSel(); saveSite(); drawMarks(); toast('全部消しました（「1つ戻す」で元に戻せます）');
   } }],
 });
-function setPen(on) {
-  S.pen = on; drawAnnot.clearSel();
-  const b = $('#penBtn'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
-  $('#penBar').hidden = !on; stage.classList.toggle('pen', on);
-  drawMarks();
-  toast(on ? '書くモード。図面を動かすときは2本指' : '書くのをやめました');
-}
-$('#penBtn').onclick = () => setPen(!S.pen);
 // 文字の入力画面（図面と写真で共用）
 let textTarget = null;
 function showTextDlg(edit, onSave, onDelete, after) {
@@ -345,12 +339,16 @@ function hitPoint(cx, cy) {
 }
 stage.addEventListener('pointerdown', e => {
   if (e.target.closest('.tools')) return;
+  if (isPen(e)) {
+    if (penId !== null) return;
+    // 手のひらが先に触れて始まった操作は取りやめて、ペンの書き込みを優先する
+    if (gest) { if (gest.drag && gest.moved) scheduleSave(); ptrs.clear(); gest = null; }
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    penId = e.pointerId; drawAnnot.down(annotPos(e), e); return;
+  }
+  if (penId !== null) return; // ペンで書いている間は、画面に触れた手のひら・指を無視する
   try { stage.setPointerCapture(e.pointerId); } catch (err) {}
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (S.pen && ptrs.size === 1) { // 書くモード：1本指は書き込みの道具に渡す
-    drawAnnot.down(annotPos(e), e); gest = { type: 'annot' }; return;
-  }
-  if (gest?.type === 'annot') { drawAnnot.cancel(); drawMarks(); } // 2本目の指が来たら書き込みはやめて拡大・移動へ
   if (ptrs.size === 1) {
     const hit = hitPoint(e.clientX, e.clientY);
     gest = { type: 'one', sx: e.clientX, sy: e.clientY, vx: V.x, vy: V.y, t: Date.now(), moved: false, hit, drag: hit && !S.addMode };
@@ -360,9 +358,9 @@ stage.addEventListener('pointerdown', e => {
   }
 });
 stage.addEventListener('pointermove', e => {
+  if (e.pointerId === penId) { drawAnnot.move(annotPos(e), e); return; }
   if (!ptrs.has(e.pointerId) || !gest) return;
   ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (gest.type === 'annot') { drawAnnot.move(annotPos(e), e); return; }
   if (gest.type === 'one') {
     const dx = e.clientX - gest.sx, dy = e.clientY - gest.sy;
     if (Math.hypot(dx, dy) > 12) gest.moved = true;
@@ -383,9 +381,13 @@ stage.addEventListener('pointermove', e => {
   }
 });
 function endPtr(e) {
+  if (e.pointerId === penId) {
+    penId = null;
+    if (e.type === 'pointercancel') { drawAnnot.cancel(); drawMarks(); } else drawAnnot.up(annotPos(e), e);
+    return;
+  }
   if (!ptrs.has(e.pointerId)) return;
   ptrs.delete(e.pointerId);
-  if (gest?.type === 'annot' && ptrs.size === 0) { gest = null; drawAnnot.up(annotPos(e), e); return; }
   if (gest?.type === 'one' && ptrs.size === 0) {
     if (gest.drag && gest.moved) scheduleSave();
     else if (!gest.moved && Date.now() - gest.t < 600) onTap(e.clientX, e.clientY, gest.hit);
@@ -1025,7 +1027,7 @@ $('#photoFloor').onchange = async e => {
 };
 let viewing = null, viewUrl = null;
 /* 写真への書き込み（道具の中身は annot.js）。写真の幅を1とした割合で ph.sketch に保存 */
-const PH = { on: false, nw: 1, nh: 1, id: null };
+const PH = { nw: 1, nh: 1, id: null };
 const phSvg = $('#photoSvg'), phWrap = $('#photoWrap');
 async function savePhotoSketch() { if (viewing) { viewing.updatedAt = new Date().toISOString(); await Store.put('photos', viewing); renderPhotos(); } }
 const photoAnnot = new Annotator({
@@ -1043,27 +1045,22 @@ function renderPhotoSketch() {
   phSvg.setAttribute('viewBox', `0 0 ${PH.nw} ${PH.nh}`);
   phSvg.innerHTML = viewing ? photoAnnot.svg() : '';
 }
-function setPhotoPen(on) {
-  PH.on = on; photoAnnot.clearSel();
-  $('#phPen').classList.toggle('on', on); $('#phPen').setAttribute('aria-pressed', on);
-  $('#phTools').hidden = !on; phWrap.classList.toggle('drawing', on);
-  renderPhotoSketch();
-}
-$('#phPen').onclick = () => setPhotoPen(!PH.on);
 const phPos = e => { const r = phSvg.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; };
 phSvg.addEventListener('pointerdown', e => {
-  if (!PH.on) return;
-  if (PH.id !== null) { photoAnnot.cancel(); renderPhotoSketch(); PH.id = null; return; } // 2本目の指は取りやめ
+  if (!isPen(e) || PH.id !== null) return; // 写真に書けるのはペンだけ（指や手のひらは無視）
   try { phSvg.setPointerCapture(e.pointerId); } catch (err) {}
   PH.id = e.pointerId; photoAnnot.down(phPos(e), e);
 });
 phSvg.addEventListener('pointermove', e => { if (PH.id === e.pointerId) photoAnnot.move(phPos(e), e); });
-function phEnd(e) { if (PH.id !== e.pointerId) return; PH.id = null; photoAnnot.up(phPos(e), e); }
+function phEnd(e) {
+  if (PH.id !== e.pointerId) return; PH.id = null;
+  if (e.type === 'pointercancel') { photoAnnot.cancel(); renderPhotoSketch(); } else photoAnnot.up(phPos(e), e);
+}
 phSvg.addEventListener('pointerup', phEnd);
 phSvg.addEventListener('pointercancel', phEnd);
 function openPhoto(ph) {
   viewing = ph; if (viewUrl) URL.revokeObjectURL(viewUrl);
-  setPhotoPen(false);
+  photoAnnot.clearSel(); PH.id = null;
   viewUrl = URL.createObjectURL(ph.blob);
   const img = $('#photoImg');
   img.onload = () => { PH.nw = img.naturalWidth; PH.nh = img.naturalHeight; renderPhotoSketch(); };
