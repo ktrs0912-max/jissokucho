@@ -1198,7 +1198,7 @@ async function markedPage(d, page, pos, maxDim) {
     c.width = Math.round(vp.width); c.height = Math.round(vp.height);
     await pg.render({ canvasContext: g, viewport: vp }).promise;
   } else {
-    const img = await createImageBitmap((await Store.get('files', d.id)).blob), k = maxDim / Math.max(img.width, img.height);
+    const img = await createImageBitmap((await Store.get('files', d.id)).blob), k = Math.min(1, maxDim / Math.max(img.width, img.height)); // 写真の図面は元より大きくしない
     c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); g.drawImage(img, 0, 0, c.width, c.height);
   }
   drawStrokes(g, d, page, c.width, c.height);
@@ -1211,6 +1211,8 @@ async function markedPage(d, page, pos, maxDim) {
   });
   return c;
 }
+// Excelに貼る図面画像の大きさ（長い辺のドット数）。Excelで拡大しても寸法の文字が読めるように
+const XLSX_IMG = 3200;
 const colName = n => { let s = ''; for (n++; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + (n - 1) % 26) + s; return s; };
 $('#xlsxBtn').onclick = async () => {
   flushSave();
@@ -1313,7 +1315,7 @@ $('#xlsxBtn').onclick = async () => {
       let row = tail; // 0始まりの行番号（画像の置き場所）
       if (d) {
         try {
-          const cv2 = await markedPage(d, p.page, p, 1600);
+          const cv2 = await markedPage(d, p.page, p, XLSX_IMG);
           const id = wb.addImage({ base64: cv2.toDataURL('image/png'), extension: 'png' });
           const w = 720, h = Math.round(w * cv2.height / cv2.width);
           ws.addImage(id, { tl: { col: 0, row }, ext: { width: w, height: h } });
