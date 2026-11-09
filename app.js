@@ -487,10 +487,18 @@ $('#importIn').onchange = async e => {
 const SYM_SKIP = new Set(['X', 'Y', 'FL', 'SL', 'GL', 'CL', 'W', 'H', 'R', 'M', 'P', 'TW', 'DW', 'PW', 'L', 'S', 'K', 'A', 'B', 'C', 'D', 'N', 'E', 'NO', 'MM', 'AL', 'SUS', 'RTB', 'PTW', 'PTH', 'ALC', 'RC', 'FAX', 'TEL']);
 function findSymbols(pages) {
   const found = new Map(); // 符号 → Map(ページ→回数)
+  const boxes = new Map(); // 符号 → Map(ページ→[文字の枠])（一覧から図面で確かめる時に丸で囲む）
   const stacked = new Set(), dashed = new Map(); // 上下に並んだ形の文字／「KT-2」形の候補
   const add = (map, name, page) => {
     if (!map.has(name)) map.set(name, new Map());
     const m = map.get(name); m.set(page, (m.get(page) || 0) + 1);
+  };
+  const box = (name, page, ...ts) => {
+    if (!boxes.has(name)) boxes.set(name, new Map());
+    const m = boxes.get(name); if (!m.has(page)) m.set(page, []);
+    const x0 = Math.min(...ts.map(t => t.x)), x1 = Math.max(...ts.map(t => t.x + Math.max(t.w, t.h * 0.6)));
+    const y0 = Math.min(...ts.map(t => -t.y - t.h)), y1 = Math.max(...ts.map(t => -t.y)); // 画面の向き（下向き）に戻す
+    m.get(page).push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
   };
   for (const { page, items } of pages) {
     const letters = items.filter(t => /^[A-Z]{1,3}$/.test(t.s) && !SYM_SKIP.has(t.s));
@@ -499,11 +507,11 @@ function findSymbols(pages) {
     for (const L of letters) {
       const lc = L.x + L.w / 2;
       const n = nums.find(N => { const dy = L.y - N.y, nc = N.x + N.w / 2; return Math.abs(nc - lc) < L.h * 1.2 && dy > L.h * 0.3 && dy < L.h * 2.2; });
-      if (n) { add(found, `${L.s}-${num(n.s)}`, page); stacked.add(L.s); }
+      if (n) { const name = `${L.s}-${num(n.s)}`; add(found, name, page); box(name, page, L, n); stacked.add(L.s); }
     }
     for (const t of items) {
       const m = t.s.match(/^([A-Z]{1,3})\s*[-‐ー－]\s*(\d{1,2}[ア-ン]?)$/);
-      if (m && !SYM_SKIP.has(m[1])) add(dashed, `${m[1]}-${num(m[2])}`, page);
+      if (m && !SYM_SKIP.has(m[1])) { const name = `${m[1]}-${num(m[2])}`; add(dashed, name, page); box(name, page, t); }
     }
   }
   // 「KT-2」形は、上下形の符号が無い図面か、同じ文字の符号がある時だけ採用（部品の型番 PKS-50 などを除くため）
@@ -517,7 +525,7 @@ function findSymbols(pages) {
   return [...found.entries()].map(([name, pg]) => {
     const score = p => pg.get(p) / perPage.get(p);
     const best = [...pg.keys()].sort((a, b) => score(b) - score(a) || a - b)[0];
-    return { name, page: best, pages: [...pg.keys()].sort((a, b) => a - b) };
+    return { name, page: best, pages: [...pg.keys()].sort((a, b) => a - b), boxes: boxes.get(name) || new Map() };
   }).sort((a, b) => a.page - b.page || a.name.localeCompare(b.name, 'ja', { numeric: true }));
 }
 // そのページの「2～7F」「3F」のような書き方から階の範囲を推測する
@@ -570,37 +578,59 @@ async function docPagesText(doc, onProgress) {
   }
   return out;
 }
-let symFound = [];
+let symFound = [], symPages = [];
+const symChecks = () => [...$('#symList').querySelectorAll('input[type=checkbox]:not(:disabled)')];
+function renderSymAll() {
+  const cs = symChecks(), on = cs.filter(c => c.checked).length;
+  $('#symAll').hidden = !cs.length;
+  $('#symAll').textContent = on === cs.length ? '全部はずす' : '全部えらぶ';
+  $('#symAdd').textContent = on ? `選んだ${on}個を追加` : '選んだ符号を追加';
+}
 $('#findSym').onclick = async () => {
   const d = S.drawing, msg = $('#symMsg'), list = $('#symList');
-  list.innerHTML = ''; $('#symAdd').hidden = true; $('#symDlg').showModal();
+  list.innerHTML = ''; $('#symAdd').hidden = true; $('#symAll').hidden = true; symPrevClose(); $('#symDlg').showModal();
   if (d.type !== 'pdf') { msg.textContent = '写真の図面からは符号をさがせません。「＋ 位置」で追加してください。'; return; }
   try {
     const pages = await pdfPagesText(d, (p, n) => msg.textContent = `図面を調べています…（${p}/${n}ページ）`);
     if (!pages.some(p => p.items.length > 20)) { msg.textContent = 'この図面には文字のデータが入っていません（スキャンした図面のようです）。「＋ 位置」で追加してください。'; return; }
+    symPages = pages;
     symFound = findSymbols(pages).map(s => ({ ...s, floors: guessFloors(pages[s.page - 1].text, s.name) }));
     if (!symFound.length) { msg.textContent = '符号が見つかりませんでした。「＋ 位置」で追加してください。'; return; }
-    msg.textContent = `${symFound.length}個見つかりました。追加する符号を選んで、ページと階の範囲を確かめてください。`;
+    msg.textContent = `${symFound.length}個見つかりました。「見る」で図面の場所を確かめ、ページと階の範囲を直してから追加してください。`;
     symFound.forEach((s, i) => {
-      const exists = S.positions.some(p => p.name === s.name);
-      const row = document.createElement('label'); row.className = 'symrow' + (exists ? ' done' : '');
-      row.innerHTML = `<input type="checkbox" ${exists ? 'disabled' : 'checked'} data-i="${i}">
-        <span><b>${esc(s.name)}</b><br><span class="meta">${exists ? '登録済み' : `${s.page}ページに割り当て`}（出てくるページ：${s.pages.join('・')}）</span></span>
-        <span class="fl"><input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[0]}" data-f="${i}" aria-label="${esc(s.name)}の開始階">〜<input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[1]}" data-t="${i}" aria-label="${esc(s.name)}の終了階">F</span>`;
+      const exists = S.positions.some(p => p.name === s.name && p.drawingId === d.id);
+      const opts = pages.map(({ page: n }) => `<option value="${n}" ${n === s.page ? 'selected' : ''}>${n}${s.pages.includes(n) ? ' ●' : ''}</option>`).join('');
+      const row = document.createElement('div'); row.className = 'symrow' + (exists ? ' done' : '');
+      row.innerHTML = `<input type="checkbox" ${exists ? 'disabled' : 'checked'} data-i="${i}" id="sym${i}" aria-label="${esc(s.name)}を追加する">
+        <label for="sym${i}"><b>${esc(s.name)}</b><br><span class="meta">${exists ? '登録済み' : '出てくるページ：' + s.pages.join('・')}</span></label>
+        <button type="button" class="chip" data-v="${i}">見る</button>
+        <span class="pg"><select data-p="${i}" aria-label="${esc(s.name)}のページ" ${exists ? 'disabled' : ''}>${opts}</select>ページ</span>
+        <span class="fl"><input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[0]}" data-f="${i}" aria-label="${esc(s.name)}の開始階" ${exists ? 'disabled' : ''}>〜<input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[1]}" data-t="${i}" aria-label="${esc(s.name)}の終了階" ${exists ? 'disabled' : ''}>F</span>`;
       list.append(row);
     });
-    $('#symAdd').hidden = false;
+    $('#symAdd').hidden = false; renderSymAll();
   } catch (err) { msg.textContent = '図面を読めませんでした：' + (err.message || err); }
 };
+$('#symList').addEventListener('change', e => {
+  if (e.target.matches('input[type=checkbox]')) renderSymAll();
+  // ページを変えたら、そのページの書き方から階を推測しなおす
+  if (e.target.dataset.p) {
+    const i = +e.target.dataset.p, s = symFound[i], f = guessFloors(symPages[+e.target.value - 1].text, s.name);
+    $(`[data-f="${i}"]`).value = f[0]; $(`[data-t="${i}"]`).value = f[1];
+  }
+});
+$('#symList').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (b) symPreview(+b.dataset.v); });
+$('#symAll').onclick = () => { const cs = symChecks(), all = cs.every(c => c.checked); cs.forEach(c => c.checked = !all); renderSymAll(); };
 $('#symClose').onclick = () => $('#symDlg').close();
 $('#symAdd').onclick = async () => {
   let added = 0;
   for (const cb of $('#symList').querySelectorAll('input[type=checkbox]:checked:not(:disabled)')) {
     const i = +cb.dataset.i, s = symFound[i];
     const a = parseInt($(`[data-f="${i}"]`).value) || 1, z = parseInt($(`[data-t="${i}"]`).value) || a;
+    const page = parseInt($(`[data-p="${i}"]`).value) || s.page;
     const floors = []; for (let f = Math.min(a, z); f <= Math.max(a, z); f++) floors.push(f + 'F');
     const now = new Date().toISOString();
-    const p = { id: uid(), siteId: S.site.id, drawingId: S.drawing.id, page: s.page, name: s.name, color: COLORS[S.positions.length % COLORS.length], floors, points: [], values: {}, memo: `図面から見つけた符号（出てくるページ：${s.pages.join('・')}）`, createdAt: now, updatedAt: now };
+    const p = { id: uid(), siteId: S.site.id, drawingId: S.drawing.id, page, name: s.name, color: COLORS[S.positions.length % COLORS.length], floors, points: [], values: {}, memo: `図面から見つけた符号（出てくるページ：${s.pages.join('・')}）`, createdAt: now, updatedAt: now };
     await Store.put('positions', p); S.positions.push(p); added++;
   }
   $('#symDlg').close();
@@ -608,6 +638,51 @@ $('#symAdd').onclick = async () => {
   renderChips(); renderPos(); drawMarks();
   toast(added ? `符号を${added}個追加しました` : '追加する符号が選ばれていません');
 };
+// 一覧から「見る」：そのページを描いて、符号の書いてある所を赤丸で囲む
+let symPrevSeq = 0, symPrevAt = null;
+function symPrevClose() { symPrevSeq++; symPrevAt = null; $('#symPrev').hidden = true; $('#symMain').hidden = false; }
+async function symPreview(i, page) {
+  const s = symFound[i], sel = $(`[data-p="${i}"]`), seq = ++symPrevSeq;
+  page = page || +sel.value || s.page; symPrevAt = { i, page };
+  $('#symMain').hidden = true; $('#symPrev').hidden = false;
+  $('#symPrevTitle').textContent = `${s.name}　${page}ページ`;
+  const bs = s.boxes.get(page) || [];
+  $('#symPrevNote').textContent = bs.length ? `赤丸が「${s.name}」の書いてある所です（${bs.length}か所）。指で動かして見られます。` : `このページには「${s.name}」の文字が見つかりませんでした。`;
+  $('#symPrevPages').innerHTML = s.pages.map(n => `<button type="button" class="chip${n === page ? ' on' : ''}" data-pp="${n}">${n}ページ</button>`).join('');
+  $('#symPrevUse').hidden = sel.disabled || +sel.value === page;
+  const box = $('#symPrevBox'), c = $('#symPrevCv');
+  c.getContext('2d').clearRect(0, 0, c.width, c.height);
+  try {
+    const pg = await (await getPdf(S.drawing)).getPage(page);
+    if (seq !== symPrevSeq) return;
+    const base = pg.getViewport({ scale: 1 });
+    // 画面の幅の2.5倍くらいで描いて、指でスクロールして見る
+    const k = Math.min(4, Math.max(1, (box.clientWidth || 360) * 2.5 / base.width)), vp = pg.getViewport({ scale: k });
+    const tmp = document.createElement('canvas'); tmp.width = Math.round(vp.width); tmp.height = Math.round(vp.height);
+    await pg.render({ canvasContext: tmp.getContext('2d'), viewport: vp }).promise;
+    if (seq !== symPrevSeq) return;
+    c.width = tmp.width; c.height = tmp.height;
+    const g = c.getContext('2d'); g.drawImage(tmp, 0, 0);
+    g.strokeStyle = '#e5484d'; g.lineWidth = Math.max(3, 3 * k);
+    for (const b of bs) {
+      const cx = (b.x + b.w / 2) * k, cy = (b.y + b.h / 2) * k, r = Math.max(b.w, b.h) * k * 0.75 + 8 * k;
+      g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.stroke();
+    }
+    // 最初の赤丸が真ん中に来るように
+    const b = bs[0];
+    if (b) { box.scrollLeft = (b.x + b.w / 2) * k - box.clientWidth / 2; box.scrollTop = (b.y + b.h / 2) * k - box.clientHeight / 2; }
+    else { box.scrollLeft = 0; box.scrollTop = 0; }
+  } catch (err) { $('#symPrevNote').textContent = '図面を表示できませんでした：' + (err.message || err); }
+}
+$('#symPrevPages').addEventListener('click', e => { const b = e.target.closest('[data-pp]'); if (b && symPrevAt) symPreview(symPrevAt.i, +b.dataset.pp); });
+$('#symPrevUse').onclick = () => {
+  if (!symPrevAt) return;
+  const sel = $(`[data-p="${symPrevAt.i}"]`); sel.value = symPrevAt.page;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  toast(`${symFound[symPrevAt.i].name}を${symPrevAt.page}ページに割り当てました`);
+  symPrevClose();
+};
+$('#symPrevBack').onclick = symPrevClose;
 $('#delPos').onclick = async () => {
   if (!S.pos || !await ask(`位置「${S.pos.name}」の番号と実測値を削除します。元に戻せません。`)) return;
   clearTimeout(saveTimer); saveTimer = null;

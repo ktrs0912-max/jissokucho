@@ -40,7 +40,7 @@
       <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
     </div>
     <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-    <p class="note small">アプリの版：<span id="appVer">v41</span></p>
+    <p class="note small">アプリの版：<span id="appVer">v42</span></p>
     <section class="card stack">
       <h2>感想を聞かせてください</h2>
       <p class="note">使ってみて、便利だったこと・困ったことを教えてください。1分で送れます。</p>
@@ -255,14 +255,26 @@
 
 <!-- 図面から符号をさがす -->
 <dialog id="symDlg" class="symdlg">
-  <div class="stack">
+  <div class="stack" id="symMain">
     <h2>図面から符号をさがす</h2>
     <p id="symMsg" class="note"></p>
     <div id="symList" class="symlist"></div>
     <div class="row wrap">
       <button type="button" id="symAdd" class="primary" hidden>選んだ符号を追加</button>
+      <button type="button" id="symAll" hidden>全部はずす</button>
       <span class="grow"></span>
       <button type="button" id="symClose">閉じる</button>
+    </div>
+  </div>
+  <div class="stack" id="symPrev" hidden>
+    <h2 id="symPrevTitle"></h2>
+    <p id="symPrevNote" class="note"></p>
+    <div id="symPrevPages" class="row wrap"></div>
+    <div id="symPrevBox" class="symprev"><canvas id="symPrevCv"></canvas></div>
+    <div class="row wrap">
+      <button type="button" id="symPrevUse" class="primary">このページにする</button>
+      <span class="grow"></span>
+      <button type="button" id="symPrevBack">一覧に戻る</button>
     </div>
   </div>
 </dialog>
