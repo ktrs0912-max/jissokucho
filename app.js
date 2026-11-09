@@ -52,19 +52,36 @@ window.addEventListener('popstate', e => {
 document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => history.back());
 
 /* ---------- ホーム ---------- */
+// 現場ごとの色（名前から決める。いつも同じ色になる）
+const siteColor = name => COLORS[[...name].reduce((h, c) => (h * 31 + c.codePointAt(0)) >>> 0, 7) % COLORS.length];
+const shortDate = iso => { const d = new Date(iso), now = new Date(); return d.toDateString() === now.toDateString() ? d.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('ja-JP', d.getFullYear() === now.getFullYear() ? { month: 'numeric', day: 'numeric' } : { year: 'numeric', month: 'numeric', day: 'numeric' }); };
 async function renderHome() {
   const sites = (await Store.all('sites')).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const posCount = new Map();
+  for (const p of await Store.all('positions')) posCount.set(p.siteId, (posCount.get(p.siteId) || 0) + 1);
   const ul = $('#siteList'); ul.innerHTML = '';
   sites.forEach(s => {
     const li = document.createElement('li'), b = document.createElement('button');
-    b.type = 'button'; b.textContent = s.name;
-    const sp = document.createElement('span'); sp.textContent = `図面 ${s.drawings.length}枚`; b.append(sp);
+    b.type = 'button'; b.className = 'sitecard'; b.dataset.name = s.name.toLowerCase();
+    const n = posCount.get(s.id) || 0;
+    b.innerHTML = `<i class="badge" style="--c:${siteColor(s.name)}">${esc([...s.name][0] || '？')}</i>
+      <span class="sbody"><b>${esc(s.name)}</b><span class="meta"><span>図面 ${s.drawings.length}枚</span><span>位置 ${n}</span><span>更新 ${shortDate(s.updatedAt)}</span></span></span>
+      <span class="chev" aria-hidden="true">›</span>`;
     b.onclick = () => { S.site = s; go('site'); };
     li.append(b); ul.append(li);
   });
   $('#homeEmpty').hidden = sites.length > 0;
+  $('#siteCount').textContent = sites.length ? `${sites.length}件の現場` : 'まだ現場がありません';
+  $('#siteSearch').hidden = sites.length < 6; filterSites();
   renderBackupInfo();
 }
+function filterSites() {
+  const q = $('#siteSearch').value.trim().toLowerCase();
+  let shown = 0;
+  $('#siteList').querySelectorAll('li').forEach(li => { const on = !q || li.firstChild.dataset.name.includes(q); li.hidden = !on; shown += on; });
+  $('#siteNone').hidden = !q || shown > 0;
+}
+$('#siteSearch').oninput = filterSites;
 $('#demoBtn').onclick = async () => {
   const b = $('#demoBtn'); b.disabled = true; b.textContent = '見本を用意しています…';
   try {
@@ -75,7 +92,8 @@ $('#demoBtn').onclick = async () => {
   } catch (err) { toast('見本を作れませんでした：' + (err.message || err)); }
   finally { b.disabled = false; b.textContent = '見本の現場で試してみる'; }
 };
-$('#addSite').onclick = async () => {
+$('#newSiteForm').onsubmit = async e => {
+  e.preventDefault();
   const name = $('#newSiteName').value.trim();
   if (!name) { $('#newSiteName').focus(); return; }
   const now = new Date().toISOString();
@@ -1464,7 +1482,12 @@ function renderSync(st = Sync.state(), msg) {
   $('#syncNowBtn').hidden = !st.connected; $('#syncNowBtn').disabled = st.running;
   $('#syncOff').hidden = !st.wasOn;
   $('#syncBanner').hidden = !(st.configured && st.wasOn && !st.connected && !st.offline);
+  // 上の帯の小さな表示：つながっている／切れている／電波なし
+  const chip = $('#syncChip'), state = st.error ? 'err' : st.connected ? 'ok' : st.wasOn ? 'warn' : '';
+  chip.hidden = !st.configured || !st.wasOn; chip.className = 'syncchip ' + state;
+  chip.querySelector('span').textContent = st.running ? '同期中…' : st.error ? '同期エラー' : st.wasOn && st.offline ? '電波なし' : st.connected ? 'ドライブ同期中' : '同期が切れています';
 }
+$('#syncChip').onclick = () => $('#syncCard').scrollIntoView({ behavior: 'smooth', block: 'center' });
 async function doConnect() {
   try { await Sync.connect(); toast('ドライブとつながりました'); }
   catch (err) { toast(err.message || String(err)); }

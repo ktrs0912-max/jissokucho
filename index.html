@@ -22,48 +22,66 @@
 </div>
 
 <!-- ホーム：現場一覧 -->
-<section id="vHome" class="view">
-  <header class="top">
-    <h1 class="brand"><img src="icon-192.png" alt="" width="34" height="34">ピタ測<small>図面にポンと番号、実測をラクに</small></h1>
+<section id="vHome" class="view home">
+  <header class="top hometop">
+    <h1 class="brand"><img src="icon-192.png" alt="" width="40" height="40"><span>ピタ測<small>図面にポンと番号、実測をラクに</small></span></h1>
+    <button id="syncChip" type="button" class="syncchip" hidden><i></i><span></span></button>
   </header>
-  <main class="pad stack">
-    <div class="row">
-      <input id="newSiteName" type="text" placeholder="現場名（例：みどりハイツ）" aria-label="現場名">
-      <button id="addSite" class="primary" type="button">＋ 現場を追加</button>
-    </div>
-    <ul id="siteList" class="list"></ul>
+  <main class="homemain">
+    <section class="newsite">
+      <div>
+        <h2>現場</h2>
+        <p id="siteCount" class="note"></p>
+      </div>
+      <form id="newSiteForm" class="newsiteform">
+        <input id="newSiteName" type="text" placeholder="現場の名前（例：みどりハイツ）" aria-label="新しい現場の名前" autocomplete="off">
+        <button id="addSite" class="primary" type="submit">＋ 現場を追加</button>
+      </form>
+    </section>
+    <input id="siteSearch" class="sitesearch" type="search" placeholder="現場をさがす" aria-label="現場をさがす" hidden>
+    <ul id="siteList" class="sitegrid"></ul>
+    <p id="siteNone" class="note center" hidden>見つかりませんでした</p>
     <div id="homeEmpty" class="hello" hidden>
-      <h2>ようこそ！</h2>
-      <p>まずは見本の現場で、どんなことができるか触ってみてください。見本はいつでも消せます。</p>
-      <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
+      <img src="icon-192.png" alt="" width="72" height="72">
+      <div>
+        <h2>ようこそ、ピタ測へ！</h2>
+        <p>施工図のPDFをタップして①②③…と番号を打ち、階ごとの実測値を記録できます。まずは見本の現場で触ってみてください。見本はいつでも消せます。</p>
+        <button id="demoBtn" type="button" class="primary">見本の現場で試してみる</button>
+      </div>
     </div>
-    <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-    <p class="note small">アプリの版：<span id="appVer">v51</span>　<a href="privacy.html">プライバシーポリシー</a></p>
-    <section class="card stack">
-      <h2>感想を聞かせてください</h2>
-      <p class="note">使ってみて、便利だったこと・困ったことを教えてください。1分で送れます。</p>
-      <div class="row"><button id="fbOpen" type="button" class="soft">感想を送る</button></div>
-    </section>
-    <section class="backup stack">
-      <h2>ドライブと同期</h2>
-      <p id="syncInfo" class="note"></p>
-      <div class="row wrap">
-        <button id="syncConnect" type="button" class="primary">ドライブとつなぐ</button>
-        <button id="syncNowBtn" type="button" hidden>今すぐ同期</button>
-        <button id="syncOff" type="button" hidden>つなぐのをやめる</button>
-      </div>
-      <p class="note small">つなぐと、どのスマホ・パソコンで開いても同じ現場・実測値・図面・写真が見られます。つないだGoogleアカウントのドライブの「ピタ測データ」フォルダに保存されます。安全のため1時間ごとに切れますが、画面をタップすると自動でつなぎ直します。</p>
-    </section>
-    <section class="backup stack">
-      <h2>バックアップ</h2>
-      <p id="backupInfo" class="note"></p>
-      <div class="row wrap">
-        <button id="backupBtn" type="button" class="primary">ドライブに保存</button>
-        <label for="restoreIn" class="filebtn">バックアップから戻す</label>
-        <input id="restoreIn" type="file" hidden>
-      </div>
-      <p class="note small">「ドライブに保存」を押したら、出てきた一覧から「ドライブ」を選んで保存先のフォルダを決めてください。図面・番号・実測値がすべて1つのファイルに入ります。</p>
-    </section>
+
+    <h2 class="sectitle">データと設定</h2>
+    <div class="settings">
+      <section id="syncCard" class="card stack">
+        <h3><span class="ico">☁</span>ドライブと同期</h3>
+        <p id="syncInfo" class="note"></p>
+        <div class="row wrap">
+          <button id="syncConnect" type="button" class="primary">ドライブとつなぐ</button>
+          <button id="syncNowBtn" type="button" hidden>今すぐ同期</button>
+          <button id="syncOff" type="button" hidden>つなぐのをやめる</button>
+        </div>
+        <p class="note small">つなぐと、どのスマホ・パソコンで開いても同じ現場・実測値・図面・写真が見られます。つないだGoogleアカウントのドライブの「ピタ測データ」フォルダに保存されます。安全のため1時間ごとに切れますが、画面をタップすると自動でつなぎ直します。</p>
+      </section>
+      <section class="card stack">
+        <h3><span class="ico">⤓</span>バックアップ</h3>
+        <p id="backupInfo" class="note"></p>
+        <div class="row wrap">
+          <button id="backupBtn" type="button" class="primary">ドライブに保存</button>
+          <label for="restoreIn" class="filebtn">バックアップから戻す</label>
+          <input id="restoreIn" type="file" hidden>
+        </div>
+        <p class="note small">「ドライブに保存」を押したら、出てきた一覧から「ドライブ」を選んで保存先のフォルダを決めてください。図面・番号・実測値がすべて1つのファイルに入ります。</p>
+      </section>
+      <section class="card stack">
+        <h3><span class="ico">✉</span>感想を聞かせてください</h3>
+        <p class="note">使ってみて、便利だったこと・困ったことを教えてください。1分で送れます。</p>
+        <div class="row"><button id="fbOpen" type="button" class="soft">感想を送る</button></div>
+      </section>
+    </div>
+    <footer class="homefoot">
+      <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
+      <p class="note small">アプリの版：<span id="appVer">v52</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
+    </footer>
   </main>
 </section>
 
