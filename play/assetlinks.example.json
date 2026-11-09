@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "io.github.ktrs0912max.pitasoku",
+      "sha256_cert_fingerprints": [
+        "PWABuilder の signing-key-info.txt にある SHA-256（AA:BB:CC:... の形）",
+        "Play Console →「テストとリリース」→「アプリの完全性」→「アプリの署名」にある SHA-256"
+      ]
+    }
+  }
+]
