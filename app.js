@@ -335,6 +335,7 @@ async function renderPage() {
       const rec = await Store.get('files', d.id);
       const img = await createImageBitmap(rec.blob);
       const k = Math.min(1, 3000 / Math.max(img.width, img.height));
+      V.k = k; // 画面の図面1ドット＝写真の何ドットか（文字の読み取りで使う）
       tmp.width = Math.round(img.width * k); tmp.height = Math.round(img.height * k);
       tmp.getContext('2d').drawImage(img, 0, 0, tmp.width, tmp.height);
     }
@@ -811,10 +812,42 @@ function renderSymAll() {
   $('#symAll').textContent = on === cs.length ? '全部はずす' : '全部えらぶ';
   $('#symAdd').textContent = on ? `選んだ${on}個を追加` : '選んだ符号を追加';
 }
+// 図面の1ページを「元の大きさ」の座標（PDFは1倍、写真は元の画素）で描くための入れ物
+// unitPt：1ポイント（1/72インチ）が何単位か。写真は大きさが分からないので、写真いっぱいにA3の図面が写っているとみなす
+async function pageSource(d, page) {
+  if (d.type === 'pdf') {
+    const pg = await (await getPdf(d)).getPage(page), base = pg.getViewport({ scale: 1 });
+    return { w: base.width, h: base.height, unitPt: 1,
+      draw: (g, k, x0 = 0, y0 = 0) => pg.render({ canvasContext: g, viewport: pg.getViewport({ scale: k, offsetX: -x0 * k, offsetY: -y0 * k }) }).promise };
+  }
+  const img = await createImageBitmap((await Store.get('files', d.id)).blob);
+  return { w: img.width, h: img.height, unitPt: Math.max(img.width, img.height) / 1190, photo: true,
+    draw: async (g, k, x0 = 0, y0 = 0) => { g.imageSmoothingQuality = 'high'; g.drawImage(img, -x0 * k, -y0 * k, img.width * k, img.height * k); } };
+}
+// 写真は場所によって明るさが違う（影・照明のむら）ので、まわりの明るさで割ってならし、白い紙に黒い線の形にそろえる
+function evenLight(c) {
+  const W = c.width, H = c.height, s = Math.max(8, Math.round(Math.max(W, H) / 40));
+  const sm = document.createElement('canvas'); sm.width = Math.ceil(W / s); sm.height = Math.ceil(H / s);
+  const sg = sm.getContext('2d'); sg.imageSmoothingQuality = 'high'; sg.filter = 'blur(2px)'; sg.drawImage(c, 0, 0, sm.width, sm.height);
+  const bgc = document.createElement('canvas'); bgc.width = W; bgc.height = H;
+  const bg2 = bgc.getContext('2d'); bg2.imageSmoothingQuality = 'high'; bg2.drawImage(sm, 0, 0, W, H);
+  const g = c.getContext('2d'), im = g.getImageData(0, 0, W, H), bg = bg2.getImageData(0, 0, W, H).data, d = im.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11, b = Math.max(40, bg[i] * 0.3 + bg[i + 1] * 0.59 + bg[i + 2] * 0.11);
+    const n = Math.min(255, Math.max(0, (v / b * 255 - 60) * 1.3)); // 紙の色を白に、線を濃く
+    d[i] = d[i + 1] = d[i + 2] = n; d[i + 3] = 255;
+  }
+  g.putImageData(im, 0, 0);
+}
 $('#findSym').onclick = async () => {
   const d = S.drawing, msg = $('#symMsg'), list = $('#symList');
   list.innerHTML = ''; $('#symAdd').hidden = true; $('#symAll').hidden = true; $('#symOcr').hidden = true; symPrevClose(); $('#symDlg').showModal();
-  if (d.type !== 'pdf') { msg.textContent = '写真の図面からは符号をさがせません。「＋ 位置」で追加してください。'; return; }
+  $('#ocrPage').textContent = d.type === 'pdf' ? 'このページ全体を読む' : '図面全体を読む';
+  if (d.type !== 'pdf') { // 写真から取り込んだ図面：文字を読み取ってさがす
+    msg.textContent = '写真の図面です。端末の中で文字を読み取って符号をさがせます。符号が書いてある辺りを拡大してから「今見えている範囲を読む」を押すと、速くて正確です。明るく、真上から、ピントの合った写真ほどよく読めます。';
+    $('#ocrAll').hidden = true; $('#symOcr').hidden = false; OCR.prefetch();
+    return;
+  }
   try {
     const pages = await pdfPagesText(d, (p, n) => msg.textContent = `図面を調べています…（${p}/${n}ページ）`);
     if (!pages.some(p => p.items.length > 20)) {
@@ -857,26 +890,29 @@ async function ocrRun(mode) {
   if (ocrBusy) return; ocrBusy = true;
   const d = S.drawing, msg = $('#symMsg'); $('#symOcr').hidden = true;
   try {
-    const doc = await getPdf(d), n = doc.numPages;
+    const n = d.type === 'pdf' ? (await getPdf(d)).numPages : 1;
     const pages = Array.from({ length: n }, (_, i) => ({ page: i + 1, items: [], text: '' }));
     const targets = mode === 'all' ? pages.map(p => p.page) : [S.page];
     for (const [ti, p] of targets.entries()) {
-      const pg = await doc.getPage(p), base = pg.getViewport({ scale: 1 });
-      let x0 = 0, y0 = 0, x1 = base.width, y1 = base.height;
-      if (mode === 'view' && V.k) { // 画面に見えている範囲を、PDFの1倍の座標に直す
+      msg.textContent = '図面を用意しています…';
+      const src = await pageSource(d, p);
+      let x0 = 0, y0 = 0, x1 = src.w, y1 = src.h;
+      if (mode === 'view' && V.k) { // 画面に見えている範囲を、元の大きさの座標に直す
         const r = stage.getBoundingClientRect(), f = V.s * V.k;
         x0 = Math.max(0, -V.x / f); y0 = Math.max(0, -V.y / f);
-        x1 = Math.min(base.width, (r.width - V.x) / f); y1 = Math.min(base.height, (r.height - V.y) / f);
+        x1 = Math.min(src.w, (r.width - V.x) / f); y1 = Math.min(src.h, (r.height - V.y) / f);
       }
       const w = x1 - x0, h = y1 - y0;
       // 文字が読みやすい細かさで描く。読み取りの部品は大きすぎる画像だと何も読めないので、長い辺3200ドット・合計750万ドットまで
-      const k = Math.min(6, 3200 / Math.max(w, h), Math.sqrt(7.5e6 / (w * h)));
+      // （写真は元の画素より大きくしても細かくならないので、3倍まで）
+      const k = Math.min(src.photo ? 3 : 6, 3200 / Math.max(w, h), Math.sqrt(7.5e6 / (w * h)));
       const c = document.createElement('canvas'); c.width = Math.ceil(w * k); c.height = Math.ceil(h * k);
       const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
-      await pg.render({ canvasContext: g, viewport: pg.getViewport({ scale: k, offsetX: -x0 * k, offsetY: -y0 * k }) }).promise;
+      await src.draw(g, k, x0, y0);
+      if (src.photo) evenLight(c);
       const head = `文字を読み取っています…${targets.length > 1 ? `（${ti + 1}/${targets.length}ページ）` : ''}`;
       msg.textContent = head + '（準備中）';
-      const res = await OCR.read(c, k, x0, y0, (pr, st) => { if (pr != null) msg.textContent = `${head} ${Math.round(pr * 100)}%`; else if (st?.startsWith('丸')) msg.textContent = `${head} ${st}`; });
+      const res = await OCR.read(c, k, x0, y0, (pr, st) => { if (pr != null) msg.textContent = `${head} ${Math.round(pr * 100)}%`; else if (st?.startsWith('丸')) msg.textContent = `${head} ${st}`; }, { ptPx: k * src.unitPt });
       pages[p - 1] = { page: p, ...res };
     }
     showSymResults(pages, true);
@@ -931,13 +967,12 @@ async function symPreview(i, page) {
   const box = $('#symPrevBox'), c = $('#symPrevCv');
   c.getContext('2d').clearRect(0, 0, c.width, c.height);
   try {
-    const pg = await (await getPdf(S.drawing)).getPage(page);
+    const src = await pageSource(S.drawing, page);
     if (seq !== symPrevSeq) return;
-    const base = pg.getViewport({ scale: 1 });
-    // 画面の幅の2.5倍くらいで描いて、指でスクロールして見る
-    const k = Math.min(4, Math.max(1, (box.clientWidth || 360) * 2.5 / base.width)), vp = pg.getViewport({ scale: k });
-    const tmp = document.createElement('canvas'); tmp.width = Math.round(vp.width); tmp.height = Math.round(vp.height);
-    await pg.render({ canvasContext: tmp.getContext('2d'), viewport: vp }).promise;
+    // 画面の幅の2.5倍くらいで描いて、指でスクロールして見る（写真は元の大きさまで）
+    const k = Math.min(src.photo ? 1 : 4, Math.max(src.photo ? 0.1 : 1, (box.clientWidth || 360) * 2.5 / src.w));
+    const tmp = document.createElement('canvas'); tmp.width = Math.round(src.w * k); tmp.height = Math.round(src.h * k);
+    await src.draw(tmp.getContext('2d'), k);
     if (seq !== symPrevSeq) return;
     c.width = tmp.width; c.height = tmp.height;
     const g = c.getContext('2d'); g.drawImage(tmp, 0, 0);

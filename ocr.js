@@ -118,7 +118,8 @@ const OCR = (() => {
   }
 
   // canvas：読む画像、k：画像1ドット＝PDFの何倍か、ox,oy：画像の左上がPDFのどこか（PDFの1倍の座標）
-  async function read(canvas, k, ox, oy, progress) {
+  // opts.ptPx：画像の何ドットが1ポイントか（符号の丸の大きさの見当に使う。PDFでは k と同じ）
+  async function read(canvas, k, ox, oy, progress, opts = {}) {
     onProg = m => { if (m.status === 'recognizing text') progress?.(m.progress); else progress?.(null, m.status); };
     const w = await getWorker();
     await w.setParameters({ tessedit_pageseg_mode: '11', tessedit_char_whitelist: '' });
@@ -134,7 +135,7 @@ const OCR = (() => {
       items.push({ s: raw.normalize('NFKC').toUpperCase(), x: ox + b.x0 / k, y: -(oy + b.y1 / k), h, w: (b.x1 - b.x0) / k });
     }
     // 丸で囲んだ符号
-    const rings = findRings(canvas, k);
+    const rings = findRings(canvas, opts.ptPx || k);
     for (const [i, r] of rings.entries()) {
       progress?.(null, `丸の中の符号を読んでいます（${i + 1}/${rings.length}）`);
       const got = await readRing(w, canvas, r).catch(() => null);

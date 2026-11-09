@@ -1,6 +1,6 @@
 // 電波のない現場でも開けるように、アプリ本体と部品（PDF・Excel・書体）をスマホに保存しておく
 // 外部のサイトには頼らない（Googleドライブとの同期・感想の送信だけはネットを使う）
-const CACHE = 'jissokucho-v54';
+const CACHE = 'jissokucho-v55';
 const FONTS = 'jissokucho-fonts'; // 書体の文字ファイル（版が変わっても消さない）
 const OCR = 'jissokucho-ocr'; // スキャン図面の文字を読み取る部品（約11MB。版が変わっても消さない）
 // 日本語の図面PDFで使われる文字の対応表
