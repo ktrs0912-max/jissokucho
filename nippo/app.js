@@ -515,6 +515,193 @@ async function makeXlsx(toDrive) {
   } catch (e) { alert('ドライブに保存できませんでした：' + e.message); }
 }
 
+// ---------- 物件をExcel・CSVからまとめて登録 ----------
+let imp = null; // {sheets:[{name, rows:[[文字,...]]}], si, head(見出しの行 or -1), code, name, checked:Set}
+const cellText = v => {
+  if (v == null) return '';
+  if (v instanceof Date) return `${v.getFullYear()}/${v.getMonth() + 1}/${v.getDate()}`;
+  if (typeof v === 'object') {
+    if (v.richText) return v.richText.map(t => t.text).join('');
+    if ('result' in v) return cellText(v.result);
+    if ('text' in v) return cellText(v.text);
+    return '';
+  }
+  return String(v);
+};
+// CSVを行と列に分ける（"…" で囲んだ中の , や改行もそのまま）
+function parseCsv(t) {
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === ',' || c === '\t') { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; }
+    else cur += c;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+// ExcelのCSVはShift_JISのことが多いので、UTF-8で読めなければShift_JISで読む
+function decodeText(buf) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf).replace(/^﻿/, ''); }
+  catch (e) { return new TextDecoder('shift_jis').decode(buf); }
+}
+$('#impFile').onchange = async ev => {
+  const f = ev.target.files[0]; ev.target.value = ''; if (!f) return;
+  try {
+    const buf = await f.arrayBuffer();
+    let sheets;
+    if (/\.(csv|txt)$/i.test(f.name)) sheets = [{ name: f.name, rows: parseCsv(decodeText(buf)) }];
+    else if (/\.xls$/i.test(f.name)) throw new Error('古い形式のExcel（.xls）は読めません。Excelで「名前を付けて保存」→「Excelブック（.xlsx）」にしてから読み込んでください。');
+    else {
+      await loadExcel();
+      const wb = new ExcelJS.Workbook(); await wb.xlsx.load(buf);
+      sheets = wb.worksheets.filter(ws => ws.state !== 'hidden').map(ws => {
+        const rows = []; // 横につないだセル（「【岩手県】」の見出しなど）は左の1マスだけ読む
+        ws.eachRow({ includeEmpty: true }, (r, n) => { const vals = []; r.eachCell({ includeEmpty: true }, (c, col) => { vals[col - 1] = c.isMerged && c.master.row === c.row && c.master.col !== c.col ? '' : cellText(c.value).trim(); }); rows[n - 1] = vals; });
+        return { name: ws.name, rows: Array.from(rows, r => Array.from(r || [], v => v || '')) };
+      });
+    }
+    sheets = sheets.map(sh => ({ ...sh, rows: sh.rows.map(r => r.map(v => String(v).replace(/[\r\n]+/g, ' ').trim())) })).filter(sh => sh.rows.some(r => r.some(v => v)));
+    if (!sheets.length) throw new Error('表の中に文字が見つかりませんでした。');
+    imp = { sheets, cols: sheets.map(sh => guessCols(sh.rows)) };
+    // 物件名の見出しがあるシートが2枚以上（受注残報告書のように担当ごとのシート）なら、はじめは全部のシートを読む
+    imp.multi = imp.cols.filter(c => c.found).length >= 2;
+    imp.si = imp.multi ? -1 : Math.max(0, imp.cols.findIndex(c => c.found));
+    imp.checked = null; imp.doneChecked = new Set();
+    renderImp();
+    $('#impBox').hidden = false; $('#impBox').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { alert('読み込めませんでした：' + (e.message || e)); }
+};
+// 見出しの行と、工事番号・物件名・製品名の列をさがす
+function guessCols(rows) {
+  const ncol = Math.max(0, ...rows.map(r => r.length));
+  const c = { head: -1, code: -1, name: -1, prod: -1, found: false };
+  // 見出しは短い言葉だけのセル（「物件一覧（11月）」のような表題の行はとばす）
+  const clean = v => v.replace(/[\s　・:：()（）]/g, '');
+  const isName = v => /^(物件名?(称)?|工事名(称)?|工事件名|現場名(称)?|件名|名称)$/.test(clean(v));
+  const isCode = v => /^(工事(番号|No\.?|NO\.?|ｺｰﾄﾞ|コード)|物件(番号|No\.?|NO\.?|コード)|番号|コード|ｺｰﾄﾞ|管理番号|受注番号|現場番号)$/i.test(clean(v));
+  const isProd = v => /^(製品名?|品名|商品名?)$/.test(clean(v));
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+    const r = rows[i], n = r.findIndex(isName);
+    if (n >= 0) { Object.assign(c, { head: i, name: n, code: r.findIndex((v, j) => j !== n && isCode(v)), prod: r.findIndex(isProd), found: true }); break; }
+  }
+  if (!c.found) { // 見出しがない：2列以上なら 1列目=工事番号・2列目=物件名、1列なら物件名だけ
+    const filled = [...Array(ncol).keys()].filter(k => rows.some(r => r[k]));
+    if (filled.length >= 2) { c.code = filled[0]; c.name = filled[1]; } else c.name = filled[0] ?? 0;
+  }
+  return c;
+}
+const colName = c => { let s = ''; c++; while (c) { s = String.fromCharCode(65 + (c - 1) % 26) + s; c = Math.floor((c - 1) / 26); } return s; };
+// 名前の比べ方：全角・半角や空白のちがいは同じとみなす
+const normName = v => (v || '').normalize('NFKC').replace(/[\s　]/g, '').toLowerCase();
+const sameProject = (p, code, name) => code ? p.code === code : normName(p.name) === normName(name);
+// 取り込む候補：見出しより下で、物件名がある行。同じ物件（工事番号、なければ物件名が同じ）は1つにまとめる
+function impRows() {
+  const idx = imp.si < 0 ? imp.cols.map((c, i) => c.found ? i : -1).filter(i => i >= 0) : [imp.si];
+  const groups = new Map();
+  for (const si of idx) {
+    const sh = imp.sheets[si], c = imp.cols[si];
+    sh.rows.forEach((r, i) => {
+      if (i <= c.head) return;
+      const name = (r[c.name] || '').trim(), code = c.code >= 0 ? (r[c.code] || '').trim() : '';
+      if (!name || /^[\d.,\s]+$/.test(name) || /^[【\[［〔<＜].*[】\]］〕>＞]$/.test(name)) return; // 数字だけのセル（合計など）や「【岩手県】」のような区切りの見出しはとばす
+      const key = code ? 'c:' + code : 'n:' + normName(name);
+      if (!groups.has(key)) groups.set(key, { key, code, name, where: [], prods: [] });
+      const g = groups.get(key);
+      g.where.push(imp.si < 0 ? `${sh.name} ${i + 1}行` : `${i + 1}行`);
+      const prod = c.prod >= 0 ? (r[c.prod] || '').trim() : '';
+      if (prod && !g.prods.includes(prod)) g.prods.push(prod);
+    });
+  }
+  return [...groups.values()].map(g => {
+    const same = db.projects.find(p => sameProject(p, g.code, g.name));
+    g.dup = same ? (normName(same.name) === normName(g.name) ? (same.active ? '登録済み' : '登録済み（完了）') : `工事番号が同じ物件あり（${same.name}）`) : '';
+    return g;
+  });
+}
+// 報告書に載っていない、入力画面に出ている物件（製作が終わったのかもしれない）
+function impGone(rows) {
+  return db.projects.filter(p => p.active && !rows.some(g => sameProject(p, g.code, g.name)));
+}
+function renderImp() {
+  const multi = imp.si < 0;
+  const sel = $('#impSheet'); sel.textContent = '';
+  if (imp.multi) sel.append(el('option', { value: -1 }, `すべてのシート（${imp.cols.filter(c => c.found).length}枚）`));
+  imp.sheets.forEach((s, i) => sel.append(el('option', { value: i }, s.name)));
+  sel.value = imp.si; $('#impSheetL').hidden = imp.sheets.length < 2;
+  // 列は1枚のシートの時だけえらべる（すべてのシートの時は、それぞれのシートの見出しから自動）
+  for (const id of ['#impCode', '#impName']) $(id).closest('label').hidden = multi;
+  if (!multi) {
+    const sh = imp.sheets[imp.si], c = imp.cols[imp.si], ncol = Math.max(1, ...sh.rows.map(r => r.length)), head = sh.rows[c.head] || [];
+    for (const [id, allowNone] of [['#impCode', true], ['#impName', false]]) {
+      const s = $(id); s.textContent = '';
+      if (allowNone) s.append(el('option', { value: -1 }, 'なし'));
+      for (let k = 0; k < ncol; k++) s.append(el('option', { value: k }, `${colName(k)}列` + (head[k] ? `（${head[k]}）` : '')));
+    }
+    $('#impCode').value = c.code; $('#impName').value = c.name;
+  }
+  const rows = impRows();
+  if (!imp.checked) imp.checked = new Set(rows.filter(r => !r.dup).map(r => r.key));
+  const hasCode = rows.some(r => r.code), hasProd = rows.some(r => r.prods.length);
+  const t = $('#impTable'); t.textContent = '';
+  // 新しい物件を上に
+  const order = [...rows.filter(r => !r.dup), ...rows.filter(r => r.dup)];
+  const all = el('input', { type: 'checkbox' });
+  all.checked = rows.some(r => !r.dup) && rows.filter(r => !r.dup).every(r => imp.checked.has(r.key));
+  all.onchange = () => { for (const r of rows) if (!r.dup) all.checked ? imp.checked.add(r.key) : imp.checked.delete(r.key); renderImp(); };
+  t.append(el('thead', {}, el('tr', {}, el('th', {}, all), hasCode ? el('th', {}, '工事番号') : null, el('th', {}, '物件名'), hasProd ? el('th', {}, '製品') : null, el('th', {}, '場所'), el('th', {}, ''))));
+  const tb = el('tbody');
+  for (const r of order) {
+    const cb = el('input', { type: 'checkbox' }); cb.checked = !r.dup && imp.checked.has(r.key); cb.disabled = !!r.dup;
+    cb.onchange = () => { cb.checked ? imp.checked.add(r.key) : imp.checked.delete(r.key); updImpInfo(rows); };
+    tb.append(el('tr', { class: r.dup ? 'dup' : '' }, el('td', {}, cb), hasCode ? el('td', {}, r.code) : null, el('td', { class: 'impname' }, r.name),
+      hasProd ? el('td', { class: 'small' }, r.prods.join('、')) : null, el('td', { class: 'small muted' }, r.where.join('、')), el('td', { class: 'muted' }, r.dup ? (r.dup.startsWith('登録済み') ? '✓ ' : '') + r.dup : '新しい物件')));
+  }
+  t.append(tb);
+  updImpInfo(rows);
+  // 報告書にない物件：完了にするか確かめる（はじめはチェックなし）
+  const gone = multi ? impGone(rows) : [], gb = $('#impGone'), gl = $('#impGoneList');
+  gb.hidden = !gone.length; gl.textContent = '';
+  for (const p of gone) {
+    const cb = el('input', { type: 'checkbox' }); cb.checked = imp.doneChecked.has(p.id);
+    cb.onchange = () => { cb.checked ? imp.doneChecked.add(p.id) : imp.doneChecked.delete(p.id); updGone(); };
+    gl.append(el('label', { class: 'chk goneitem' }, cb, ` ${pLabel(p)}`));
+  }
+  updGone();
+}
+function updGone() { const n = imp.doneChecked.size; $('#impDoneDo').disabled = !n; $('#impDoneDo').textContent = n ? `えらんだ ${n}件を完了にする` : '完了にする物件をえらんでください'; }
+function updImpInfo(rows) {
+  const n = rows.filter(r => !r.dup && imp.checked.has(r.key)).length, d = rows.filter(r => r.dup).length, nw = rows.filter(r => !r.dup).length;
+  $('#impInfo').textContent = rows.length ? `物件 ${rows.length}件のうち、新しい物件 ${nw}件（登録済み ${d}件はとばします）。` + (imp.si < 0 ? '同じ物件名の行は1つにまとめています。' : '列がちがう時は上でえらびなおしてください。') : '物件名が見つかりません。シートや列をえらびなおしてください。';
+  $('#impDo').disabled = !n; $('#impDo').textContent = n ? `えらんだ ${n}件を登録する` : (nw ? '登録する物件をえらんでください' : '新しい物件はありません');
+}
+$('#impSheet').onchange = () => { imp.si = +$('#impSheet').value; imp.checked = null; renderImp(); };
+$('#impCode').onchange = () => { imp.cols[imp.si].code = +$('#impCode').value; imp.checked = null; renderImp(); };
+$('#impName').onchange = () => { imp.cols[imp.si].name = +$('#impName').value; imp.checked = null; renderImp(); };
+$('#impCancel').onclick = () => { imp = null; $('#impBox').hidden = true; };
+$('#impDo').onclick = () => {
+  const add = impRows().filter(r => !r.dup && imp.checked.has(r.key));
+  if (!add.length) return;
+  const t = nowIso();
+  for (const r of add) db.projects.push({ id: uid(), code: r.code, name: r.name, active: true, createdAt: t, at: t });
+  save(); imp.checked = new Set(); renderImp(); renderProjAdmin(); toast(`${add.length}件の物件を登録しました`);
+};
+$('#impDoneDo').onclick = () => {
+  const ps = db.projects.filter(p => imp.doneChecked.has(p.id)); if (!ps.length) return;
+  for (const p of ps) p.active = false;
+  save(...ps); imp.doneChecked = new Set(); renderImp(); renderProjAdmin(); toast(`${ps.length}件を完了にしました（入力画面に出なくなります）`);
+};
+$('#impSample').onclick = async () => {
+  try { await loadExcel(); } catch (e) { alert(e.message); return; }
+  const wb = new ExcelJS.Workbook(), ws = wb.addWorksheet('物件');
+  ws.columns = [{ header: '工事番号', width: 14 }, { header: '物件名', width: 40 }];
+  ws.addRow(['24-101', '○○マンション新築工事']); ws.addRow(['24-102', '△△ビル改修工事']);
+  ws.getRow(1).font = { bold: true };
+  download(new Blob([await wb.xlsx.writeBuffer()], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), '物件の登録用_見本.xlsx');
+};
+
 // ---------- その他 ----------
 $('#pinSave').onclick = () => {
   const v = $('#pinInput').value.trim();
