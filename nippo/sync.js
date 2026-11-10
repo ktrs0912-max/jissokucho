@@ -1,17 +1,19 @@
 // Googleドライブとの同期：何台のタブレット・パソコンで開いても同じ記録が見られるようにする
 // ドライブの「製作日報データ」フォルダに nippo.json（作業員・物件・工程・記録と「消した印」）を置く。
 // 同じ物が両方にあれば、あとから書き換えたほうを残す。
-// ピタ測と同じGoogleのログイン設定（同じ公開先なので使える）。このアプリが作ったファイルだけ触れる。
+// 製作日報専用のGoogleのログイン設定（Google Cloud プロジェクト seisaku-nippo）。このアプリが作ったファイルだけ触れる。
 'use strict';
 const Sync = (() => {
-  const CLIENT_ID = '950333121100-mr2lv09h1bokm5vpcbdj622qak0a0bed.apps.googleusercontent.com';
+  const CLIENT_ID = '944235510828-ndgp5f29gsi1v5t5t3ba8pf1946cih25.apps.googleusercontent.com';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
   const FOLDER = '製作日報データ', FILE = 'nippo.json';
-  const K = { on: 'nippo.sync.on', tok: 'nippo.sync.tok', email: 'nippo.sync.email', last: 'nippo.sync.last', folder: 'nippo.sync.folder' };
+  const K = { on: 'nippo.sync.on', tok: 'nippo.sync.tok', email: 'nippo.sync.email', last: 'nippo.sync.last', folder: 'nippo.sync.folder', cid: 'nippo.sync.cid' };
   const LS = {
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
   };
+  // ログイン設定が変わったら、前の設定でもらった鍵と、前の設定で作ったフォルダの覚えを捨てる（つなぎ直すと新しい設定で続ける）
+  if (LS.get(K.cid) !== CLIENT_ID) { if (LS.get(K.cid) || LS.get(K.on)) { LS.set(K.tok, null); LS.set(K.folder, null); } LS.set(K.cid, CLIENT_ID); }
   let token = null, tokenExp = 0, folderId = LS.get(K.folder), running = false, again = false, timer = null, pending = false, error = null, netDown = false;
   const listeners = [];
   { const t = LS.get(K.tok); if (t && t.exp > Date.now()) { token = t.token; tokenExp = t.exp; } }
