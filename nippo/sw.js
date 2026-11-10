@@ -1,6 +1,6 @@
 // 電波がなくても開けるように、アプリ本体をタブレットに保存しておく
-const CACHE = 'nippo-v4';
-const FILES = ['./', 'index.html', 'style.css', 'app.js', 'sync.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', '../lib/exceljs/exceljs.min.js'];
+const CACHE = 'nippo-v5';
+const FILES = ['./', 'index.html', 'style.css', 'app.js', 'sync.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'favicon-48.png', 'apple-touch-icon.png', '../lib/exceljs/exceljs.min.js'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });

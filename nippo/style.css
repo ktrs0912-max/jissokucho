@@ -105,3 +105,18 @@ table.rec td.empty{background:#fafbfd}
 .syncchip.warn{color:var(--warn);background:#fff3dc}
 .syncchip.err{color:var(--red);background:#fdecec}
 .note.warn{color:var(--warn);font-weight:700}.note.err{color:var(--red);font-weight:700}
+/* 休み */
+.wcard.off{border-color:#c9d1dc;background:#eef1f5}
+.wcard.off .st{color:var(--muted);font-size:20px}
+.offrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
+.offbtns{display:flex;gap:8px;flex-wrap:wrap}
+.offbtn{min-width:96px;border-radius:26px;color:var(--muted)}
+.offbtn.on{background:#6b7787;border-color:#6b7787;color:#fff}
+.offnow{background:#eef1f5;border-radius:var(--r-sm);padding:8px 12px;font-weight:700;color:var(--muted);margin:6px 0}
+table.rec td.offc{color:var(--muted);background:#eef1f5}
+/* 入れ忘れ */
+.forgot{border:2px solid #f0c27a;background:#fff8ea;margin-top:20px}
+.frow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line)}
+.frow:last-child{border-bottom:0}
+.fnm{font-weight:800;min-width:100px}
+.fchip{min-height:46px;border-radius:23px;border-color:#f0c27a;color:var(--warn);font-size:16px}

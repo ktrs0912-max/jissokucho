@@ -4,6 +4,7 @@
 //   projects … 物件   [{id, code, name, active, createdAt}]
 //   processes… 工程   [{id, name, active}]（切断・溶接・塗装。管理で増やせる）
 //   entries  … 記録   {"YYYY-MM-DD|作業員id": {items:[{pid, procs:[工程id], hours}], note, at}}
+//            休みの日は {items:[], off:'休み'|'有給'|'欠勤', note, at}
 //   tombs    … 消した印 {id または "e:記録のキー": 消した時刻}（ドライブ同期で、消した物がよみがえらないように）
 // 作業員・物件・工程には at（書き換えた時刻）と、作業員・工程には ord（並び順）を持たせる
 'use strict';
@@ -84,6 +85,8 @@ const pLabel = p => p ? (p.code ? `${p.code} ${p.name}` : p.name) : '（消さ�
 const procName = id => db.processes.find(x => x.id === id)?.name || '（消された工程）';
 const procText = i => (i.procs || []).map(procName).join('・');
 // 1物件分の書き方：「24-101 ○○マンション【切断・溶接】(5h)」
+const OFF_TYPES = ['休み', '有給', '欠勤'];
+const entryText = (e, short, sep) => e.off ? `（${e.off}）` : e.items.map(i => itemText(i, short)).join(sep);
 const itemText = (i, short) => (short ? proj(i.pid)?.name || '（消された物件）' : pLabel(proj(i.pid))) + (i.procs?.length ? `【${procText(i)}】` : '') + (i.hours ? `(${i.hours}h)` : '');
 
 // ---------- 日付 ----------
@@ -118,12 +121,40 @@ function renderHome() {
   for (const w of ws) {
     const e = db.entries[`${curDate}|${w.id}`];
     if (e) done++;
-    g.append(el('button', { type: 'button', class: 'wcard' + (e ? ' done' : ''), onclick: () => openEntry(w.id) },
+    g.append(el('button', { type: 'button', class: 'wcard' + (e ? (e.off ? ' off' : ' done') : ''), onclick: () => openEntry(w.id) },
       el('span', { class: 'nm' }, w.name),
-      el('span', { class: 'st' }, e ? '✓ 入力済み' : '未入力'),
-      e ? el('span', { class: 'pj' }, e.items.map(i => itemText(i)).join('\n')) : null));
+      el('span', { class: 'st' }, e ? (e.off ? e.off : '✓ 入力済み') : '未入力'),
+      e && !e.off ? el('span', { class: 'pj' }, entryText(e, false, '\n')) : null));
   }
   $('#homeCount').textContent = ws.length ? `${jp(curDate)}：${ws.length}人中 ${done}人 入力済み` : '';
+  renderForgot();
+}
+// ---------- 入れ忘れ ----------
+// 入れ忘れとみなす日：日曜以外で、だれかが作業を入れている（＝工場が動いていた）のに、その人の入力がない日。
+// 今日はまだ入れる途中なので数えない。その人の最初の入力より前の日も数えない（あとから来た人のため）
+function forgotDays(w, from, to) {
+  const keys = Object.keys(db.entries);
+  const mine = keys.filter(k => k.endsWith('|' + w.id)).map(k => k.split('|')[0]).sort();
+  if (!mine.length) return [];
+  const open = new Set(keys.filter(k => !db.entries[k].off).map(k => k.split('|')[0]));
+  const out = [];
+  for (let d = from > mine[0] ? from : mine[0]; d <= to && d < today(); d = addDays(d, 1)) {
+    if (parse(d).getDay() !== 0 && open.has(d) && !db.entries[`${d}|${w.id}`]) out.push(d);
+  }
+  return out;
+}
+const md = s => { const d = parse(s); return `${d.getMonth() + 1}/${d.getDate()}（${WD[d.getDay()]}）`; };
+function goEntry(d, wid) { curDate = d; show('vHome'); renderHome(); openEntry(wid); }
+// ホーム：この2週間の入れ忘れ。タップでその日の入力へ
+function renderForgot() {
+  const box = $('#forgot'), list = $('#forgotList'); list.textContent = '';
+  const from = addDays(today(), -14);
+  for (const w of db.workers.filter(x => x.active)) {
+    const ds = forgotDays(w, from, today());
+    if (ds.length) list.append(el('div', { class: 'frow' }, el('span', { class: 'fnm' }, w.name),
+      ...ds.map(d => el('button', { type: 'button', class: 'fchip', onclick: () => goEntry(d, w.id) }, md(d)))));
+  }
+  box.hidden = !list.children.length;
 }
 $('#dPrev').onclick = () => { curDate = addDays(curDate, -1); renderHome(); };
 $('#dNext').onclick = () => { if (curDate < today()) { curDate = addDays(curDate, 1); renderHome(); } };
@@ -137,7 +168,7 @@ $('#dLabel').onclick = () => {
 let ed = null; // 入力中 {wid, items:[{pid,hours}]}
 function openEntry(wid) {
   const e = db.entries[`${curDate}|${wid}`];
-  ed = { wid, items: e ? e.items.map(i => ({ ...i, procs: [...(i.procs || [])] })) : [] };
+  ed = { wid, items: e ? e.items.map(i => ({ ...i, procs: [...(i.procs || [])] })) : [], off: e?.off || '' };
   $('#entryTitle').textContent = `${worker(wid).name}さん　${jp(curDate)}`;
   $('#entryNote').value = e ? e.note || '' : '';
   $('#projFilter').value = '';
@@ -192,6 +223,19 @@ function renderEntry() {
       el('button', { type: 'button', class: 'sm danger', onclick: () => toggle(it.pid) }, 'はずす')));
   }
   $('#copyLast').hidden = !lastEntry();
+  // 休みのボタン
+  const ob = $('#offBtns'); ob.textContent = '';
+  for (const t of OFF_TYPES) ob.append(el('button', { type: 'button', class: 'offbtn' + (ed.off === t ? ' on' : ''), onclick: () => setOff(t) }, t));
+  $('#offNow').hidden = !ed.off;
+  $('#offNow').textContent = ed.off ? `いまは「${ed.off}」で入っています。作業した場合は物件をえらんで保存してください。` : '';
+}
+// 休みを押したら、その場で保存してホームへ（物件をえらんでいたら確かめる）
+function setOff(t) {
+  if (ed.items.length && !confirm(`えらんだ物件を消して「${t}」にしますか？`)) return;
+  delete db.tombs[`e:${curDate}|${ed.wid}`];
+  db.entries[`${curDate}|${ed.wid}`] = { items: [], off: t, note: $('#entryNote').value.trim(), at: nowIso() };
+  save(); toast(`${worker(ed.wid).name}さん　${t}で保存しました`);
+  show('vHome'); renderHome();
 }
 function toggle(pid) {
   const i = ed.items.findIndex(x => x.pid === pid);
@@ -203,7 +247,7 @@ function lastEntry() {
   let best = null;
   for (const [k, e] of Object.entries(db.entries)) {
     const [d, w] = k.split('|');
-    if (w === ed.wid && d < curDate && (!best || d > best.d)) best = { d, e };
+    if (w === ed.wid && d < curDate && !e.off && (!best || d > best.d)) best = { d, e };
   }
   return best;
 }
@@ -353,10 +397,18 @@ function renderRec() {
     const wd = parse(d).getDay(), cls = wd === 0 ? 'sun' : wd === 6 ? 'sat' : '';
     tb.append(el('tr', {}, el('th', { class: cls }, jp(d)), ...ws.map(w => {
       const e = db.entries[`${d}|${w.id}`];
-      return el('td', { class: e ? '' : 'empty' }, e ? e.items.map(i => itemText(i, true)).join(' / ') : '');
+      return el('td', { class: e ? (e.off ? 'offc' : '') : 'empty' }, e ? entryText(e, true, ' / ') : '');
     })));
   }
   t.append(tb);
+  // この月の入れ忘れ
+  const fl = $('#recForgot'); fl.textContent = '';
+  for (const w of ws) {
+    const ds = forgotDays(w, m + '-01', monthDays(m).at(-1));
+    if (ds.length) fl.append(el('div', { class: 'frow' }, el('span', { class: 'fnm' }, w.name),
+      ...ds.map(d => el('button', { type: 'button', class: 'fchip', onclick: () => goEntry(d, w.id) }, md(d)))));
+  }
+  if (!fl.children.length) fl.append(el('p', { class: 'note' }, 'この月の入れ忘れはありません。'));
 }
 // 1件の記録を物件ごとの人工に分ける（時間があれば時間の割合、なければ等分）
 function shares(e) {
@@ -368,6 +420,7 @@ function monthRows(m) {
   const rows = [];
   for (const d of monthDays(m)) for (const w of monthWorkers(m)) {
     const e = db.entries[`${d}|${w.id}`]; if (!e) continue;
+    if (e.off) { rows.push({ d, w: w.name, off: e.off, code: '', name: '', procs: [], proc: '', hours: 0, man: 0, note: e.note || '' }); continue; }
     for (const s of shares(e)) { const p = proj(s.pid); rows.push({ d, w: w.name, code: p?.code || '', name: p?.name || '（消された物件）', procs: s.procs, proc: s.procs.map(procName).join('・'), hours: s.hours, man: s.man, note: e.note || '' }); }
   }
   return rows;
@@ -377,8 +430,8 @@ $('#csvOut').onclick = () => {
   const m = $('#recMonth').value; const rows = monthRows(m);
   if (!rows.length) { toast('この月の記録がありません'); return; }
   const q = v => `"${String(v).replace(/"/g, '""')}"`;
-  const csv = [['日付', '曜日', '作業員', '工事番号', '物件名', '工程', '時間', '人工', 'ひとこと'].map(q).join(','),
-    ...rows.map(r => [r.d, WD[parse(r.d).getDay()], r.w, r.code, r.name, r.proc, r.hours || '', Math.round(r.man * 100) / 100, r.note].map(q).join(','))].join('\r\n');
+  const csv = [['日付', '曜日', '作業員', '区分', '工事番号', '物件名', '工程', '時間', '人工', 'ひとこと'].map(q).join(','),
+    ...rows.map(r => [r.d, WD[parse(r.d).getDay()], r.w, r.off || '作業', r.code, r.name, r.proc, r.hours || '', r.off ? '' : Math.round(r.man * 100) / 100, r.note].map(q).join(','))].join('\r\n');
   download(new Blob(['﻿' + csv], { type: 'text/csv' }), `製作日報_${m}.csv`);
 };
 function loadExcel() {
@@ -395,16 +448,16 @@ async function makeXlsx(toDrive) {
   const head = r => { r.font = { bold: true }; r.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE4EEFA' } }; c.border = { bottom: { style: 'thin' } }; }); };
   // 明細
   const s1 = wb.addWorksheet('明細', { views: [{ state: 'frozen', ySplit: 1 }] });
-  s1.columns = [{ header: '日付', width: 12 }, { header: '曜日', width: 6 }, { header: '作業員', width: 14 }, { header: '工事番号', width: 12 }, { header: '物件名', width: 32 }, { header: '工程', width: 16 }, { header: '時間', width: 8 }, { header: '人工', width: 8 }, { header: 'ひとこと', width: 30 }];
-  for (const r of rows) s1.addRow([parse(r.d), WD[parse(r.d).getDay()], r.w, r.code, r.name, r.proc, r.hours || null, Math.round(r.man * 100) / 100, r.note]);
-  s1.getColumn(1).numFmt = 'yyyy/mm/dd'; head(s1.getRow(1)); s1.autoFilter = { from: 'A1', to: 'I1' };
+  s1.columns = [{ header: '日付', width: 12 }, { header: '曜日', width: 6 }, { header: '作業員', width: 14 }, { header: '区分', width: 8 }, { header: '工事番号', width: 12 }, { header: '物件名', width: 32 }, { header: '工程', width: 16 }, { header: '時間', width: 8 }, { header: '人工', width: 8 }, { header: 'ひとこと', width: 30 }];
+  for (const r of rows) s1.addRow([parse(r.d), WD[parse(r.d).getDay()], r.w, r.off || '作業', r.code, r.name, r.proc, r.hours || null, r.off ? null : Math.round(r.man * 100) / 100, r.note]);
+  s1.getColumn(1).numFmt = 'yyyy/mm/dd'; head(s1.getRow(1)); s1.autoFilter = { from: 'A1', to: 'J1' };
   // 日別（日付×作業員）
   const ws = monthWorkers(m);
   const s2 = wb.addWorksheet('日別', { views: [{ state: 'frozen', xSplit: 1, ySplit: 1 }] });
   s2.addRow(['日付', ...ws.map(w => w.name)]); head(s2.getRow(1));
   s2.getColumn(1).width = 16; ws.forEach((_, i) => s2.getColumn(i + 2).width = 24);
   for (const d of monthDays(m)) {
-    const r = s2.addRow([jp(d), ...ws.map(w => { const e = db.entries[`${d}|${w.id}`]; return e ? e.items.map(i => itemText(i)).join('\n') : ''; })]);
+    const r = s2.addRow([jp(d), ...ws.map(w => { const e = db.entries[`${d}|${w.id}`]; return e ? entryText(e, false, '\n') : ''; })]);
     r.alignment = { wrapText: true, vertical: 'top' };
     const wd = parse(d).getDay(); if (wd === 0 || wd === 6) r.getCell(1).font = { color: { argb: wd === 0 ? 'FFD64545' : 'FF2F6FB5' } };
   }
@@ -412,6 +465,7 @@ async function makeXlsx(toDrive) {
   const s3 = wb.addWorksheet('物件別', { views: [{ state: 'frozen', xSplit: 2, ySplit: 1 }] });
   const agg = new Map();
   for (const r of rows) {
+    if (r.off) continue;
     const k = r.code + '\t' + r.name;
     if (!agg.has(k)) agg.set(k, { code: r.code, name: r.name, man: {}, hours: 0, days: new Set() });
     const a = agg.get(k); a.man[r.w] = (a.man[r.w] || 0) + r.man; a.hours += r.hours; a.days.add(r.d);
@@ -425,9 +479,10 @@ async function makeXlsx(toDrive) {
   // 工程別（物件×工程の人工。1物件に工程が2つなら半分ずつ）
   const s4 = wb.addWorksheet('工程別', { views: [{ state: 'frozen', xSplit: 2, ySplit: 1 }] });
   const pcols = db.processes.filter(x => x.active || rows.some(r => r.procs.includes(x.id)));
-  const NONE = '（工程なし）', hasNone = rows.some(r => !r.procs.length);
+  const NONE = '（工程なし）', hasNone = rows.some(r => !r.off && !r.procs.length);
   const pagg = new Map();
   for (const r of rows) {
+    if (r.off) continue;
     const k = r.code + '\t' + r.name;
     if (!pagg.has(k)) pagg.set(k, { code: r.code, name: r.name, man: {} });
     const a = pagg.get(k), ks = r.procs.length ? r.procs : [NONE];
@@ -440,6 +495,15 @@ async function makeXlsx(toDrive) {
     const vals = [...pcols.map(x => a.man[x.id]), ...(hasNone ? [a.man[NONE]] : [])];
     s4.addRow([a.code, a.name, ...vals.map(r2), r2(vals.reduce((t, v) => t + (v || 0), 0))]);
   });
+  // 人別（作業した日・休み・入れ忘れの日数）
+  const s5 = wb.addWorksheet('人別', { views: [{ state: 'frozen', xSplit: 1, ySplit: 1 }] });
+  s5.addRow(['作業員', '作業した日', ...OFF_TYPES, '入れ忘れ', '入れ忘れの日']); head(s5.getRow(1));
+  s5.getColumn(1).width = 14; s5.getColumn(OFF_TYPES.length + 4).width = 40;
+  for (const w of ws) {
+    const es = monthDays(m).map(d => db.entries[`${d}|${w.id}`]).filter(Boolean);
+    const fd = forgotDays(w, m + '-01', monthDays(m).at(-1));
+    s5.addRow([w.name, es.filter(e => !e.off).length, ...OFF_TYPES.map(t => es.filter(e => e.off === t).length || null), fd.length || null, fd.map(md).join('、')]);
+  }
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name = `製作日報_${m}.xlsx`;
   if (!toDrive) { download(blob, name); return; }
