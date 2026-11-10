@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2f6fb5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="製作日報">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>製作日報</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ホーム：日付と作業員の一覧 -->
+<section id="vHome" class="view">
+  <header class="top">
+    <h1>製作日報</h1>
+    <div class="datenav">
+      <button id="dPrev" type="button" aria-label="前の日">‹</button>
+      <button id="dLabel" type="button" class="datelabel"></button>
+      <button id="dNext" type="button" aria-label="次の日">›</button>
+    </div>
+    <button id="dToday" type="button" class="sm">今日</button>
+  </header>
+  <main class="pad">
+    <p class="lead">自分の名前をタップして、今日つくった物件をえらんでください。</p>
+    <div id="workerGrid" class="workers"></div>
+    <p id="homeEmpty" class="note" hidden>作業員がまだいません。右下の「管理」から作業員と物件を登録してください。</p>
+  </main>
+  <footer class="foot">
+    <span id="homeCount" class="muted"></span>
+    <button id="toAdmin" type="button" class="sm">管理</button>
+  </footer>
+</section>
+
+<!-- 入力：物件をえらぶ -->
+<section id="vEntry" class="view" hidden>
+  <header class="top">
+    <button id="entryBack" type="button" class="back" aria-label="もどる">‹</button>
+    <h1 id="entryTitle"></h1>
+  </header>
+  <main class="pad">
+    <div class="row wrap">
+      <input id="projFilter" type="search" placeholder="物件名・工事番号でさがす" class="grow">
+      <button id="copyLast" type="button" class="soft">前回と同じ</button>
+    </div>
+    <p class="hint">つくった物件をタップ（いくつでもえらべます）。もう一度タップで取り消し。</p>
+    <div id="projGrid" class="projects"></div>
+    <p id="projEmpty" class="note" hidden>物件が登録されていません。「管理」→「物件」で登録してください。</p>
+
+    <div id="selBox" class="card" hidden>
+      <h2>えらんだ物件 <small class="muted">時間は分かれば入れてください（なくても保存できます）</small></h2>
+      <ul id="selList" class="sellist"></ul>
+      <label class="notelabel">ひとこと（任意）<input id="entryNote" type="text" placeholder="例：溶接のみ、午後から応援 など"></label>
+    </div>
+  </main>
+  <footer class="foot entryfoot">
+    <button id="entryClear" type="button" class="danger">この日の入力を消す</button>
+    <button id="entrySave" type="button" class="primary big">保存する</button>
+  </footer>
+</section>
+
+<!-- 管理 -->
+<section id="vAdmin" class="view" hidden>
+  <header class="top">
+    <button id="adminBack" type="button" class="back" aria-label="もどる">‹</button>
+    <h1>管理</h1>
+  </header>
+  <nav class="tabs">
+    <button type="button" data-tab="tProj" class="on">物件</button>
+    <button type="button" data-tab="tWork">作業員</button>
+    <button type="button" data-tab="tRec">記録・出力</button>
+    <button type="button" data-tab="tEtc">その他</button>
+  </nav>
+  <main class="pad">
+    <!-- 物件 -->
+    <div id="tProj" class="tab">
+      <form id="projForm" class="card stack">
+        <h2>物件を追加</h2>
+        <div class="row wrap">
+          <input id="pCode" type="text" placeholder="工事番号（任意）" class="code">
+          <input id="pName" type="text" placeholder="物件名（必須）" class="grow" required>
+          <button type="submit" class="primary">追加</button>
+        </div>
+      </form>
+      <div class="row wrap gap">
+        <label class="chk"><input id="showDone" type="checkbox"> 完了した物件も表示</label>
+      </div>
+      <ul id="projAdmin" class="alist"></ul>
+    </div>
+
+    <!-- 作業員 -->
+    <div id="tWork" class="tab" hidden>
+      <form id="workForm" class="card stack">
+        <h2>作業員を追加</h2>
+        <div class="row">
+          <input id="wName" type="text" placeholder="名前" class="grow" required>
+          <button type="submit" class="primary">追加</button>
+        </div>
+      </form>
+      <ul id="workAdmin" class="alist"></ul>
+      <p class="note">「休み中」にした人はホームに出ません（記録は残ります）。</p>
+    </div>
+
+    <!-- 記録・出力 -->
+    <div id="tRec" class="tab" hidden>
+      <div class="card stack">
+        <div class="row wrap">
+          <input id="recMonth" type="month">
+          <button id="xlsxOut" type="button" class="primary">Excelで出す</button>
+          <button id="csvOut" type="button">CSVで出す</button>
+        </div>
+        <p class="note">Excelには「明細」「日別」「物件別」の3枚のシートが入ります。物件別の「人工」は、1日に2物件なら0.5人工ずつ（時間を入れた日は時間の割合）で数えます。</p>
+      </div>
+      <div class="tablewrap"><table id="recTable" class="rec"></table></div>
+    </div>
+
+    <!-- その他 -->
+    <div id="tEtc" class="tab" hidden>
+      <div class="card stack">
+        <h2>管理画面のパスワード</h2>
+        <p class="note">作業員がうっかり物件や記録を変えないように、管理画面に入る時の数字（4けた程度）を決められます。空にすると無しになります。</p>
+        <div class="row"><input id="pinInput" type="password" inputmode="numeric" placeholder="例：1234" class="grow"><button id="pinSave" type="button">決める</button></div>
+        <p id="pinInfo" class="note"></p>
+      </div>
+      <div class="card stack">
+        <h2>バックアップ</h2>
+        <p class="note">データはこのタブレットの中にだけ保存されています。月に一度くらい「保存」して、パソコンやドライブに残しておくと安心です。</p>
+        <div class="row wrap">
+          <button id="bkSave" type="button" class="primary">バックアップを保存</button>
+          <label class="filebtn">バックアップから戻す<input id="bkLoad" type="file" accept=".json,application/json" hidden></label>
+        </div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<div id="toast" class="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>

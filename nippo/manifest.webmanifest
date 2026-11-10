@@ -1,0 +1,17 @@
+{
+  "id": "./",
+  "name": "製作日報 - 今日はどの物件？",
+  "short_name": "製作日報",
+  "description": "工場の作業員が、その日に製作した物件をタブレットでかんたんに入力する日報アプリ。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f6fb",
+  "theme_color": "#2f6fb5",
+  "lang": "ja",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
