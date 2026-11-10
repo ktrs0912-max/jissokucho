@@ -120,3 +120,11 @@ table.rec td.offc{color:var(--muted);background:#eef1f5}
 .frow:last-child{border-bottom:0}
 .fnm{font-weight:800;min-width:100px}
 .fchip{min-height:46px;border-radius:23px;border-color:#f0c27a;color:var(--warn);font-size:16px}
+/* 物件のまとめて登録 */
+.improw label{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:700}
+.improw select{font:inherit;min-height:48px;border:1.5px solid var(--line);border-radius:var(--r-sm);padding:6px 10px;background:var(--surface);color:var(--ink)}
+.impwrap{max-height:50vh;margin-top:6px}
+#impTable input[type=checkbox]{width:22px;height:22px}
+#impTable tr.dup td{color:var(--muted);background:#fafbfd}
+#impTable td{white-space:normal}
+.filebtn.primary{color:#fff}

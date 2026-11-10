@@ -97,6 +97,27 @@
           <button type="submit" class="primary">追加</button>
         </div>
       </form>
+      <div class="card stack">
+        <h2>Excel・CSVからまとめて登録</h2>
+        <p class="note">工事番号と物件名が並んだ表（1行に1物件）を読み込みます。1行目に「工事番号」「物件名」などの見出しがあれば、その列を自動でえらびます。読み込んだあと、登録する前に中身を確かめられます。すでに登録してある物件はとばします。</p>
+        <div class="row wrap">
+          <label class="filebtn primary">ファイルをえらぶ<input id="impFile" type="file" accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden></label>
+          <button id="impSample" type="button">見本のExcelを出す</button>
+        </div>
+        <div id="impBox" hidden>
+          <div class="row wrap improw">
+            <label id="impSheetL">シート <select id="impSheet"></select></label>
+            <label>工事番号の列 <select id="impCode"></select></label>
+            <label>物件名の列 <select id="impName"></select></label>
+          </div>
+          <p id="impInfo" class="note"></p>
+          <div class="tablewrap impwrap"><table id="impTable" class="rec"></table></div>
+          <div class="row wrap" style="margin-top:12px">
+            <button id="impDo" type="button" class="primary">えらんだ物件を登録する</button>
+            <button id="impCancel" type="button">やめる</button>
+          </div>
+        </div>
+      </div>
       <div class="row wrap gap">
         <label class="chk"><input id="showDone" type="checkbox"> 完了した物件も表示</label>
       </div>
