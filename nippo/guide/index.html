@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>製作日報の使い方（作業員用）</title>
+<link rel="stylesheet" href="../../lib/fonts/fonts.css">
+<style>
+@page{size:A4 portrait;margin:9mm}
+*{box-sizing:border-box}
+body{margin:0;font-family:"M PLUS Rounded 1c","Hiragino Maru Gothic ProN","Hiragino Sans","Meiryo",sans-serif;color:#1f2a37;background:#e9edf3;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.page{width:192mm;height:278mm;margin:10mm auto;background:#fff;display:flex;flex-direction:column;gap:2.6mm;overflow:hidden}
+@media print{body{background:#fff}.page{margin:0}.noprint{display:none}}
+.title{display:flex;align-items:center;gap:4mm;background:#2f6fb5;color:#fff;border-radius:4mm;padding:3mm 5mm}
+.title img{width:15mm;height:15mm;border-radius:3mm;background:#fff}
+.title h1{margin:0;font-size:24pt;font-weight:800;letter-spacing:.06em;line-height:1.2}
+.title p{margin:0;font-size:11pt;font-weight:700;opacity:.95}
+.steps{display:grid;grid-template-columns:1fr 1fr;gap:2.6mm}
+.step{border:.6mm solid #cfdbe9;border-radius:4mm;padding:3mm 3.5mm;display:flex;flex-direction:column;gap:2mm}
+.step h2{margin:0;display:flex;align-items:center;gap:2.5mm;font-size:16pt;font-weight:800;line-height:1.25}
+.num{flex:none;width:11mm;height:11mm;border-radius:50%;background:#2f6fb5;color:#fff;display:flex;align-items:center;justify-content:center;font-size:17pt;font-weight:800}
+.step p{margin:0;font-size:10.5pt;line-height:1.5}
+.shot{display:block;max-width:100%;border:.3mm solid #dbe2ec;border-radius:2mm;margin:0 auto}
+.must{color:#d64545;font-weight:800}
+.ok{color:#2e8b57;font-weight:800}
+.boxes{display:grid;grid-template-columns:1fr 1fr;gap:2.6mm}
+.box{border-radius:4mm;padding:3mm 3.5mm;display:flex;flex-direction:column;gap:1.8mm}
+.box h3{margin:0;font-size:13.5pt;font-weight:800}
+.box p{margin:0;font-size:10.5pt;line-height:1.5}
+.off{background:#eef1f5}
+.fix{background:#e4eefa}
+.forgot{background:#fff6e5}
+.tip{background:#e3f4ea}
+.foot{margin-top:auto;display:flex;align-items:center;gap:4mm;border-top:.5mm dashed #b8c4d4;padding-top:3mm;font-size:12pt;font-weight:800}
+.foot .line{flex:1;border-bottom:.4mm solid #1f2a37;height:7mm}
+.noprint{text-align:center;margin:6mm 0 0;font:14px sans-serif}
+.noprint button{font:inherit;font-size:16px;padding:8px 20px;border-radius:8px;border:0;background:#2f6fb5;color:#fff;cursor:pointer}
+</style>
+</head>
+<body>
+<p class="noprint"><button onclick="print()">印刷する</button>（A4たて・1枚）</p>
+<div class="page">
+  <div class="title">
+    <img src="../icon-192.png" alt="">
+    <div>
+      <h1>製作日報の使い方</h1>
+      <p>毎日、仕事が終わったら入力してください（1人1分）</p>
+    </div>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <h2><span class="num">1</span>自分の名前をタップ</h2>
+      <img class="shot" src="1home.png" alt="" style="width:88%;border:0">
+      <p>まだ入れていない人は <span class="must">「未入力」</span> と赤く出ています。</p>
+    </div>
+    <div class="step">
+      <h2><span class="num">2</span>今日つくった物件をタップ</h2>
+      <img class="shot" src="2proj.png" alt="" style="width:100%;border:0">
+      <p>青くなって <b>✓</b> が付きます。<b>いくつでも</b>えらべます。もう一度押すと取り消し。</p>
+    </div>
+    <div class="step">
+      <h2><span class="num">3</span>工程をタップ</h2>
+      <img class="shot" src="3proc.png" alt="" style="width:92%;border:0">
+      <p>えらんだ物件ごとに、切断・溶接・塗装をえらびます（いくつでも）。<span class="must">工程は必ずえらんでください。</span>時間は分かれば入れてください（なくてもOK）。</p>
+    </div>
+    <div class="step">
+      <h2><span class="num">4</span>「保存する」を押す</h2>
+      <div style="display:flex;gap:3mm;align-items:center">
+        <img class="shot" src="4save.png" alt="" style="width:42%">
+        <span style="font-size:18pt;font-weight:800;color:#6b7787">→</span>
+        <img class="shot" src="4done.png" alt="" style="width:42%">
+      </div>
+      <p>名前が <span class="ok">緑</span> になって <span class="ok">「✓ 入力済み」</span> と出たら終わりです。</p>
+    </div>
+  </div>
+
+  <div class="boxes">
+    <div class="box off">
+      <h3>🏠 休みの日は</h3>
+      <img class="shot" src="6off.png" alt="" style="width:80%;border:0;margin:1mm auto">
+      <p>名前をタップして「休み」「有給」「欠勤」を<b>押すだけ</b>で保存されます。</p>
+    </div>
+    <div class="box forgot">
+      <h3>⚠️ 「入れ忘れがあります」と出たら</h3>
+      <img class="shot" src="5forgot.png" alt="" style="width:88%;border:0">
+      <p>黄色い枠の<b>日付をタップ</b>すると、その日の入力ができます。</p>
+    </div>
+    <div class="box fix">
+      <h3>✏️ まちがえた時は</h3>
+      <p>もう一度<b>名前をタップ</b>して直し、「保存する」を押します。<br>ほかの日を直す時は、画面の上の <b>「‹」</b> で日付をもどしてから名前をタップ。</p>
+    </div>
+    <div class="box tip">
+      <h3>👍 昨日と同じ物件なら</h3>
+      <div style="display:flex;gap:3mm;align-items:center">
+        <img class="shot" src="7copy.png" alt="" style="width:30%;margin:0">
+        <p>を押すと、前回の物件と工程がそのまま入ります。あとは「保存する」だけ。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">こまった時は <span class="line"></span> まで</div>
+</div>
+</body>
+</html>
