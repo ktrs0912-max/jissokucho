@@ -91,3 +91,9 @@ table.rec td.empty{background:#fafbfd}
 .toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);z-index:50;background:#1f2a37;color:#fff;padding:14px 26px;border-radius:30px;font-size:18px;font-weight:700;box-shadow:0 6px 24px rgba(0,0,0,.25)}
 .entryfoot .primary{margin-left:auto}
 .wcard .pj{white-space:pre-line}
+/* 工程のボタン */
+.procs{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.procs .plabel{font-size:13px;color:var(--muted);font-weight:700}
+.pchip{min-height:52px;min-width:84px;border-radius:26px;font-size:18px;border:2px solid var(--line)}
+.pchip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.pchip.on::before{content:"✓"}

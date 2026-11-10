@@ -47,12 +47,12 @@
       <input id="projFilter" type="search" placeholder="物件名・工事番号でさがす" class="grow">
       <button id="copyLast" type="button" class="soft">前回と同じ</button>
     </div>
-    <p class="hint">つくった物件をタップ（いくつでもえらべます）。もう一度タップで取り消し。</p>
+    <p class="hint">つくった物件をタップ（いくつでもえらべます）。下に出てくる欄で、その物件の工程（切断・溶接・塗装）をえらんでください。</p>
     <div id="projGrid" class="projects"></div>
     <p id="projEmpty" class="note" hidden>物件が登録されていません。「管理」→「物件」で登録してください。</p>
 
     <div id="selBox" class="card" hidden>
-      <h2>えらんだ物件 <small class="muted">時間は分かれば入れてください（なくても保存できます）</small></h2>
+      <h2>えらんだ物件 <small class="muted">工程をタップ（いくつでも）。時間は分かれば入れてください（なくても保存できます）</small></h2>
       <ul id="selList" class="sellist"></ul>
       <label class="notelabel">ひとこと（任意）<input id="entryNote" type="text" placeholder="例：溶接のみ、午後から応援 など"></label>
     </div>
@@ -71,6 +71,7 @@
   </header>
   <nav class="tabs">
     <button type="button" data-tab="tProj" class="on">物件</button>
+    <button type="button" data-tab="tProc">工程</button>
     <button type="button" data-tab="tWork">作業員</button>
     <button type="button" data-tab="tRec">記録・出力</button>
     <button type="button" data-tab="tEtc">その他</button>
@@ -90,6 +91,19 @@
         <label class="chk"><input id="showDone" type="checkbox"> 完了した物件も表示</label>
       </div>
       <ul id="projAdmin" class="alist"></ul>
+    </div>
+
+    <!-- 工程 -->
+    <div id="tProc" class="tab" hidden>
+      <form id="procForm" class="card stack">
+        <h2>工程を追加</h2>
+        <div class="row">
+          <input id="prName" type="text" placeholder="例：組立、仕上げ" class="grow" required>
+          <button type="submit" class="primary">追加</button>
+        </div>
+      </form>
+      <ul id="procAdmin" class="alist"></ul>
+      <p class="note">入力画面には上から順に出ます。「使わない」にした工程は入力画面に出ません（記録は残ります）。</p>
     </div>
 
     <!-- 作業員 -->
@@ -113,7 +127,7 @@
           <button id="xlsxOut" type="button" class="primary">Excelで出す</button>
           <button id="csvOut" type="button">CSVで出す</button>
         </div>
-        <p class="note">Excelには「明細」「日別」「物件別」の3枚のシートが入ります。物件別の「人工」は、1日に2物件なら0.5人工ずつ（時間を入れた日は時間の割合）で数えます。</p>
+        <p class="note">Excelには「明細」「日別」「物件別」「工程別」の4枚のシートが入ります。工程別は、1物件に工程を2つえらんだ日は半分ずつで数えます。物件別の「人工」は、1日に2物件なら0.5人工ずつ（時間を入れた日は時間の割合）で数えます。</p>
       </div>
       <div class="tablewrap"><table id="recTable" class="rec"></table></div>
     </div>

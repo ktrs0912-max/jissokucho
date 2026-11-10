@@ -2,7 +2,8 @@
 // データはこのタブレットの中（localStorage）に保存する
 //   workers  … 作業員 [{id, name, active}]（並び順は配列の順）
 //   projects … 物件   [{id, code, name, active, createdAt}]
-//   entries  … 記録   {"YYYY-MM-DD|作業員id": {items:[{pid, hours}], note, at}}
+//   processes… 工程   [{id, name, active}]（切断・溶接・塗装。管理で増やせる）
+//   entries  … 記録   {"YYYY-MM-DD|作業員id": {items:[{pid, procs:[工程id], hours}], note, at}}
 'use strict';
 const KEY = 'nippo.data.v1', PINKEY = 'nippo.pin';
 const $ = s => document.querySelector(s);
@@ -11,14 +12,22 @@ const WD = ['日', '月', '火', '水', '木', '金', '土'];
 // ---------- 保存 ----------
 let db = load();
 function load() {
-  try { const d = JSON.parse(localStorage.getItem(KEY)); if (d && d.workers) return d; } catch (e) {}
-  return { workers: [], projects: [], entries: {} };
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
+  if (!d || !d.workers) d = { workers: [], projects: [], entries: {} };
+  if (!d.processes) d.processes = defaultProcs(); // 工程を入れる前の版のデータにも足す
+  return d;
 }
+function defaultProcs() { return ['切断', '溶接', '塗装'].map((name, i) => ({ id: 'p' + i, name, active: true })); }
 function save() { localStorage.setItem(KEY, JSON.stringify(db)); }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const proj = id => db.projects.find(p => p.id === id);
 const worker = id => db.workers.find(w => w.id === id);
 const pLabel = p => p ? (p.code ? `${p.code} ${p.name}` : p.name) : '（消された物件）';
+const procName = id => db.processes.find(x => x.id === id)?.name || '（消された工程）';
+const procText = i => (i.procs || []).map(procName).join('・');
+// 1物件分の書き方：「24-101 ○○マンション【切断・溶接】(5h)」
+const itemText = (i, short) => (short ? proj(i.pid)?.name || '（消された物件）' : pLabel(proj(i.pid))) + (i.procs?.length ? `【${procText(i)}】` : '') + (i.hours ? `(${i.hours}h)` : '');
 
 // ---------- 日付 ----------
 const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -55,7 +64,7 @@ function renderHome() {
     g.append(el('button', { type: 'button', class: 'wcard' + (e ? ' done' : ''), onclick: () => openEntry(w.id) },
       el('span', { class: 'nm' }, w.name),
       el('span', { class: 'st' }, e ? '✓ 入力済み' : '未入力'),
-      e ? el('span', { class: 'pj' }, e.items.map(i => pLabel(proj(i.pid)) + (i.hours ? `（${i.hours}h）` : '')).join('\n')) : null));
+      e ? el('span', { class: 'pj' }, e.items.map(i => itemText(i)).join('\n')) : null));
   }
   $('#homeCount').textContent = ws.length ? `${jp(curDate)}：${ws.length}人中 ${done}人 入力済み` : '';
 }
@@ -71,7 +80,7 @@ $('#dLabel').onclick = () => {
 let ed = null; // 入力中 {wid, items:[{pid,hours}]}
 function openEntry(wid) {
   const e = db.entries[`${curDate}|${wid}`];
-  ed = { wid, items: e ? e.items.map(i => ({ ...i })) : [] };
+  ed = { wid, items: e ? e.items.map(i => ({ ...i, procs: [...(i.procs || [])] })) : [] };
   $('#entryTitle').textContent = `${worker(wid).name}さん　${jp(curDate)}`;
   $('#entryNote').value = e ? e.note || '' : '';
   $('#projFilter').value = '';
@@ -106,8 +115,19 @@ function renderEntry() {
   for (const it of ed.items) {
     const out = el('output', {}, it.hours ? `${it.hours} 時間` : '― 時間');
     const step = d => { it.hours = Math.max(0, Math.min(24, (it.hours || 0) + d)); out.textContent = it.hours ? `${it.hours} 時間` : '― 時間'; };
+    // 工程：押すたびに入れる／はずす（いくつでも）。使わなくなった工程も、この記録で使っていれば出す
+    const procs = el('div', { class: 'procs' }, el('span', { class: 'plabel' }, '工程'));
+    for (const pr of db.processes.filter(x => x.active || it.procs.includes(x.id))) {
+      const b = el('button', { type: 'button', class: 'pchip' + (it.procs.includes(pr.id) ? ' on' : ''), onclick: () => {
+        const k = it.procs.indexOf(pr.id);
+        if (k >= 0) it.procs.splice(k, 1); else { it.procs.push(pr.id); it.procs.sort((a, c) => db.processes.findIndex(x => x.id === a) - db.processes.findIndex(x => x.id === c)); }
+        b.classList.toggle('on', k < 0);
+      } }, pr.name);
+      procs.append(b);
+    }
     ul.append(el('li', {},
       el('span', { class: 'nm' }, pLabel(proj(it.pid))),
+      procs,
       el('span', { class: 'hours' },
         el('button', { type: 'button', onclick: () => step(-0.5), 'aria-label': '30分へらす' }, '−'), out,
         el('button', { type: 'button', onclick: () => step(0.5), 'aria-label': '30分ふやす' }, '＋')),
@@ -117,7 +137,7 @@ function renderEntry() {
 }
 function toggle(pid) {
   const i = ed.items.findIndex(x => x.pid === pid);
-  if (i >= 0) ed.items.splice(i, 1); else ed.items.push({ pid, hours: 0 });
+  if (i >= 0) ed.items.splice(i, 1); else ed.items.push({ pid, procs: [], hours: 0 });
   renderEntry();
 }
 // この人の、今の日付より前でいちばん新しい記録
@@ -131,14 +151,14 @@ function lastEntry() {
 }
 $('#copyLast').onclick = () => {
   const l = lastEntry(); if (!l) return;
-  ed.items = l.e.items.filter(i => proj(i.pid)).map(i => ({ pid: i.pid, hours: 0 }));
-  renderEntry(); toast(`${jp(l.d)}と同じ物件をえらびました`);
+  ed.items = l.e.items.filter(i => proj(i.pid)).map(i => ({ pid: i.pid, procs: (i.procs || []).filter(id => db.processes.some(x => x.id === id && x.active)), hours: 0 }));
+  renderEntry(); toast(`${jp(l.d)}と同じ物件・工程をえらびました`);
 };
 $('#projFilter').oninput = renderEntry;
 $('#entryBack').onclick = () => { show('vHome'); renderHome(); };
 $('#entrySave').onclick = () => {
   if (!ed.items.length) { toast('物件をえらんでください'); return; }
-  db.entries[`${curDate}|${ed.wid}`] = { items: ed.items.map(i => i.hours ? i : { pid: i.pid }), note: $('#entryNote').value.trim(), at: new Date().toISOString() };
+  db.entries[`${curDate}|${ed.wid}`] = { items: ed.items.map(i => { const o = { pid: i.pid }; if (i.procs.length) o.procs = i.procs; if (i.hours) o.hours = i.hours; return o; }), note: $('#entryNote').value.trim(), at: new Date().toISOString() };
   save(); toast(`${worker(ed.wid).name}さん　保存しました`);
   show('vHome'); renderHome();
 };
@@ -160,7 +180,7 @@ for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => {
   for (const t of document.querySelectorAll('.tab')) t.hidden = t.id !== b.dataset.tab;
   renderAdmin();
 };
-function renderAdmin() { renderProjAdmin(); renderWorkAdmin(); renderRec(); $('#pinInfo').textContent = localStorage.getItem(PINKEY) ? 'いまはパスワードあり' : 'いまはパスワードなし'; }
+function renderAdmin() { renderProjAdmin(); renderWorkAdmin(); renderProcAdmin(); renderRec(); $('#pinInfo').textContent = localStorage.getItem(PINKEY) ? 'いまはパスワードあり' : 'いまはパスワードなし'; }
 const usedP = id => Object.values(db.entries).some(e => e.items.some(i => i.pid === id));
 const usedW = id => Object.keys(db.entries).some(k => k.endsWith('|' + id));
 
@@ -193,6 +213,32 @@ function renderProjAdmin() {
         if (confirm(`「${p.name}」を消しますか？`)) { db.projects = db.projects.filter(x => x !== p); save(); renderProjAdmin(); }
       } }, '消す')));
   }
+}
+
+// 工程
+const usedPr = id => Object.values(db.entries).some(e => e.items.some(i => (i.procs || []).includes(id)));
+$('#procForm').onsubmit = ev => {
+  ev.preventDefault();
+  const name = $('#prName').value.trim(); if (!name) return;
+  if (db.processes.some(x => x.name === name)) { toast('同じ工程があります'); return; }
+  db.processes.push({ id: uid(), name, active: true }); save(); $('#prName').value = ''; renderProcAdmin(); toast('追加しました');
+};
+function renderProcAdmin() {
+  const ul = $('#procAdmin'); ul.textContent = '';
+  if (!db.processes.length) ul.append(el('li', {}, el('span', { class: 'muted' }, '工程がありません')));
+  db.processes.forEach((x, i) => {
+    const move = d => { const j = i + d; if (j < 0 || j >= db.processes.length) return; [db.processes[i], db.processes[j]] = [db.processes[j], db.processes[i]]; save(); renderProcAdmin(); };
+    ul.append(el('li', { class: x.active ? '' : 'off' },
+      el('span', { class: 'nm' }, x.name), x.active ? null : el('span', { class: 'tag' }, '使わない'),
+      el('button', { type: 'button', class: 'sm', onclick: () => move(-1), 'aria-label': '上へ' }, '↑'),
+      el('button', { type: 'button', class: 'sm', onclick: () => move(1), 'aria-label': '下へ' }, '↓'),
+      el('button', { type: 'button', class: 'sm', onclick: () => { const n = prompt('工程の名前', x.name); if (n && n.trim()) { x.name = n.trim(); save(); renderProcAdmin(); } } }, '名前をなおす'),
+      el('button', { type: 'button', class: 'sm', onclick: () => { x.active = !x.active; save(); renderProcAdmin(); } }, x.active ? '使わない' : '戻す'),
+      el('button', { type: 'button', class: 'sm danger', onclick: () => {
+        if (usedPr(x.id)) { alert('この工程は記録に使われているので消せません。「使わない」にしてください。'); return; }
+        if (confirm(`「${x.name}」を消しますか？`)) { db.processes = db.processes.filter(y => y !== x); save(); renderProcAdmin(); }
+      } }, '消す')));
+  });
 }
 
 // 作業員
@@ -235,7 +281,7 @@ function renderRec() {
     const wd = parse(d).getDay(), cls = wd === 0 ? 'sun' : wd === 6 ? 'sat' : '';
     tb.append(el('tr', {}, el('th', { class: cls }, jp(d)), ...ws.map(w => {
       const e = db.entries[`${d}|${w.id}`];
-      return el('td', { class: e ? '' : 'empty' }, e ? e.items.map(i => proj(i.pid)?.name + (i.hours ? `(${i.hours}h)` : '')).join(' / ') : '');
+      return el('td', { class: e ? '' : 'empty' }, e ? e.items.map(i => itemText(i, true)).join(' / ') : '');
     })));
   }
   t.append(tb);
@@ -244,13 +290,13 @@ function renderRec() {
 function shares(e) {
   const tot = e.items.reduce((s, i) => s + (i.hours || 0), 0);
   const allH = e.items.every(i => i.hours);
-  return e.items.map(i => ({ pid: i.pid, hours: i.hours || 0, man: allH && tot ? i.hours / tot : 1 / e.items.length }));
+  return e.items.map(i => ({ pid: i.pid, procs: i.procs || [], hours: i.hours || 0, man: allH && tot ? i.hours / tot : 1 / e.items.length }));
 }
 function monthRows(m) {
   const rows = [];
   for (const d of monthDays(m)) for (const w of monthWorkers(m)) {
     const e = db.entries[`${d}|${w.id}`]; if (!e) continue;
-    for (const s of shares(e)) { const p = proj(s.pid); rows.push({ d, w: w.name, code: p?.code || '', name: p?.name || '（消された物件）', hours: s.hours, man: s.man, note: e.note || '' }); }
+    for (const s of shares(e)) { const p = proj(s.pid); rows.push({ d, w: w.name, code: p?.code || '', name: p?.name || '（消された物件）', procs: s.procs, proc: s.procs.map(procName).join('・'), hours: s.hours, man: s.man, note: e.note || '' }); }
   }
   return rows;
 }
@@ -259,8 +305,8 @@ $('#csvOut').onclick = () => {
   const m = $('#recMonth').value; const rows = monthRows(m);
   if (!rows.length) { toast('この月の記録がありません'); return; }
   const q = v => `"${String(v).replace(/"/g, '""')}"`;
-  const csv = [['日付', '曜日', '作業員', '工事番号', '物件名', '時間', '人工', 'ひとこと'].map(q).join(','),
-    ...rows.map(r => [r.d, WD[parse(r.d).getDay()], r.w, r.code, r.name, r.hours || '', Math.round(r.man * 100) / 100, r.note].map(q).join(','))].join('\r\n');
+  const csv = [['日付', '曜日', '作業員', '工事番号', '物件名', '工程', '時間', '人工', 'ひとこと'].map(q).join(','),
+    ...rows.map(r => [r.d, WD[parse(r.d).getDay()], r.w, r.code, r.name, r.proc, r.hours || '', Math.round(r.man * 100) / 100, r.note].map(q).join(','))].join('\r\n');
   download(new Blob(['﻿' + csv], { type: 'text/csv' }), `製作日報_${m}.csv`);
 };
 function loadExcel() {
@@ -275,16 +321,16 @@ $('#xlsxOut').onclick = async () => {
   const head = r => { r.font = { bold: true }; r.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE4EEFA' } }; c.border = { bottom: { style: 'thin' } }; }); };
   // 明細
   const s1 = wb.addWorksheet('明細', { views: [{ state: 'frozen', ySplit: 1 }] });
-  s1.columns = [{ header: '日付', width: 12 }, { header: '曜日', width: 6 }, { header: '作業員', width: 14 }, { header: '工事番号', width: 12 }, { header: '物件名', width: 32 }, { header: '時間', width: 8 }, { header: '人工', width: 8 }, { header: 'ひとこと', width: 30 }];
-  for (const r of rows) s1.addRow([parse(r.d), WD[parse(r.d).getDay()], r.w, r.code, r.name, r.hours || null, Math.round(r.man * 100) / 100, r.note]);
-  s1.getColumn(1).numFmt = 'yyyy/mm/dd'; head(s1.getRow(1)); s1.autoFilter = { from: 'A1', to: 'H1' };
+  s1.columns = [{ header: '日付', width: 12 }, { header: '曜日', width: 6 }, { header: '作業員', width: 14 }, { header: '工事番号', width: 12 }, { header: '物件名', width: 32 }, { header: '工程', width: 16 }, { header: '時間', width: 8 }, { header: '人工', width: 8 }, { header: 'ひとこと', width: 30 }];
+  for (const r of rows) s1.addRow([parse(r.d), WD[parse(r.d).getDay()], r.w, r.code, r.name, r.proc, r.hours || null, Math.round(r.man * 100) / 100, r.note]);
+  s1.getColumn(1).numFmt = 'yyyy/mm/dd'; head(s1.getRow(1)); s1.autoFilter = { from: 'A1', to: 'I1' };
   // 日別（日付×作業員）
   const ws = monthWorkers(m);
   const s2 = wb.addWorksheet('日別', { views: [{ state: 'frozen', xSplit: 1, ySplit: 1 }] });
   s2.addRow(['日付', ...ws.map(w => w.name)]); head(s2.getRow(1));
   s2.getColumn(1).width = 16; ws.forEach((_, i) => s2.getColumn(i + 2).width = 24);
   for (const d of monthDays(m)) {
-    const r = s2.addRow([jp(d), ...ws.map(w => { const e = db.entries[`${d}|${w.id}`]; return e ? e.items.map(i => pLabel(proj(i.pid)) + (i.hours ? `(${i.hours}h)` : '')).join('\n') : ''; })]);
+    const r = s2.addRow([jp(d), ...ws.map(w => { const e = db.entries[`${d}|${w.id}`]; return e ? e.items.map(i => itemText(i)).join('\n') : ''; })]);
     r.alignment = { wrapText: true, vertical: 'top' };
     const wd = parse(d).getDay(); if (wd === 0 || wd === 6) r.getCell(1).font = { color: { argb: wd === 0 ? 'FFD64545' : 'FF2F6FB5' } };
   }
@@ -301,6 +347,24 @@ $('#xlsxOut').onclick = async () => {
   [...agg.values()].sort((a, b) => a.code.localeCompare(b.code, 'ja', { numeric: true }) || a.name.localeCompare(b.name, 'ja')).forEach(a => {
     const man = ws.map(w => a.man[w.name] ? Math.round(a.man[w.name] * 100) / 100 : null);
     s3.addRow([a.code, a.name, ...man, Math.round(man.reduce((s, v) => s + (v || 0), 0) * 100) / 100, a.hours || null, a.days.size]);
+  });
+  // 工程別（物件×工程の人工。1物件に工程が2つなら半分ずつ）
+  const s4 = wb.addWorksheet('工程別', { views: [{ state: 'frozen', xSplit: 2, ySplit: 1 }] });
+  const pcols = db.processes.filter(x => x.active || rows.some(r => r.procs.includes(x.id)));
+  const NONE = '（工程なし）', hasNone = rows.some(r => !r.procs.length);
+  const pagg = new Map();
+  for (const r of rows) {
+    const k = r.code + '\t' + r.name;
+    if (!pagg.has(k)) pagg.set(k, { code: r.code, name: r.name, man: {} });
+    const a = pagg.get(k), ks = r.procs.length ? r.procs : [NONE];
+    for (const id of ks) a.man[id] = (a.man[id] || 0) + r.man / ks.length;
+  }
+  s4.addRow(['工事番号', '物件名', ...pcols.map(x => x.name + '（人工）'), ...(hasNone ? [NONE] : []), '合計']); head(s4.getRow(1));
+  s4.getColumn(1).width = 12; s4.getColumn(2).width = 32; for (let i = 0; i <= pcols.length + 1; i++) s4.getColumn(i + 3).width = 12;
+  const r2 = v => v ? Math.round(v * 100) / 100 : null;
+  [...pagg.values()].sort((a, b) => a.code.localeCompare(b.code, 'ja', { numeric: true }) || a.name.localeCompare(b.name, 'ja')).forEach(a => {
+    const vals = [...pcols.map(x => a.man[x.id]), ...(hasNone ? [a.man[NONE]] : [])];
+    s4.addRow([a.code, a.name, ...vals.map(r2), r2(vals.reduce((t, v) => t + (v || 0), 0))]);
   });
   const buf = await wb.xlsx.writeBuffer();
   download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `製作日報_${m}.xlsx`);
