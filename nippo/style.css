@@ -128,3 +128,10 @@ table.rec td.offc{color:var(--muted);background:#eef1f5}
 #impTable tr.dup td{color:var(--muted);background:#fafbfd}
 #impTable td{white-space:normal}
 .filebtn.primary{color:#fff}
+#impTable td.impname{font-weight:700}
+#impTable td.small{font-size:13px}
+.gone{margin-top:18px;padding-top:14px;border-top:1.5px dashed var(--line)}
+.gone h2{font-size:16px;margin:0 0 6px}
+.gone h2 small{font-size:13px;font-weight:400;margin-left:6px}
+.gonelist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px}
+.goneitem{background:var(--bg);border-radius:var(--r-sm);padding:8px 10px}

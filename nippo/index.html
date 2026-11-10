@@ -99,7 +99,7 @@
       </form>
       <div class="card stack">
         <h2>Excel・CSVからまとめて登録</h2>
-        <p class="note">工事番号と物件名が並んだ表（1行に1物件）を読み込みます。1行目に「工事番号」「物件名」などの見出しがあれば、その列を自動でえらびます。読み込んだあと、登録する前に中身を確かめられます。すでに登録してある物件はとばします。</p>
+        <p class="note">工事番号と物件名が並んだ表を読み込みます。「工事番号」「物件名」などの見出しがあれば、その列を自動でえらびます。毎月の受注残報告書のように担当ごとにシートが分かれていても、全部のシートをまとめて読み、同じ物件名の行は1つにまとめます。読み込んだあと、登録する前に中身を確かめられます。すでに登録してある物件はとばします。</p>
         <div class="row wrap">
           <label class="filebtn primary">ファイルをえらぶ<input id="impFile" type="file" accept=".xlsx,.xlsm,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden></label>
           <button id="impSample" type="button">見本のExcelを出す</button>
@@ -114,7 +114,12 @@
           <div class="tablewrap impwrap"><table id="impTable" class="rec"></table></div>
           <div class="row wrap" style="margin-top:12px">
             <button id="impDo" type="button" class="primary">えらんだ物件を登録する</button>
-            <button id="impCancel" type="button">やめる</button>
+            <button id="impCancel" type="button">閉じる</button>
+          </div>
+          <div id="impGone" class="gone" hidden>
+            <h2>この表に載っていない物件 <small class="muted">受注残から消えた＝製作が終わった物件なら、チェックして「完了にする」と入力画面に出なくなります（記録は残ります）</small></h2>
+            <div id="impGoneList" class="gonelist"></div>
+            <button id="impDoneDo" type="button" style="margin-top:10px">完了にする</button>
           </div>
         </div>
       </div>
