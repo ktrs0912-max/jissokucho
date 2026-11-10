@@ -97,3 +97,6 @@ table.rec td.empty{background:#fafbfd}
 .pchip{min-height:52px;min-width:84px;border-radius:26px;font-size:18px;border:2px solid var(--line)}
 .pchip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .pchip.on::before{content:"✓"}
+/* 工程をえらんでいない物件（保存しようとした時） */
+.sellist li.need{background:#fdecec;border-radius:var(--r-sm);padding:8px 10px;box-shadow:0 0 0 2px var(--red) inset}
+.sellist li.need .procs::after{content:"← 工程をえらんでください";color:var(--red);font-weight:800;font-size:15px}

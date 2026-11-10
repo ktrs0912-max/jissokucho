@@ -122,10 +122,11 @@ function renderEntry() {
         const k = it.procs.indexOf(pr.id);
         if (k >= 0) it.procs.splice(k, 1); else { it.procs.push(pr.id); it.procs.sort((a, c) => db.processes.findIndex(x => x.id === a) - db.processes.findIndex(x => x.id === c)); }
         b.classList.toggle('on', k < 0);
+        b.closest('li').classList.toggle('need', it.need = !it.procs.length && !!it.need);
       } }, pr.name);
       procs.append(b);
     }
-    ul.append(el('li', {},
+    ul.append(el('li', { class: it.need ? 'need' : '' },
       el('span', { class: 'nm' }, pLabel(proj(it.pid))),
       procs,
       el('span', { class: 'hours' },
@@ -158,6 +159,15 @@ $('#projFilter').oninput = renderEntry;
 $('#entryBack').onclick = () => { show('vHome'); renderHome(); };
 $('#entrySave').onclick = () => {
   if (!ed.items.length) { toast('物件をえらんでください'); return; }
+  // 工程は必ずえらぶ。えらんでいない物件は赤くして、そこまで画面を動かす
+  const miss = ed.items.filter(i => !i.procs.length);
+  if (miss.length) {
+    for (const i of ed.items) i.need = !i.procs.length;
+    renderEntry();
+    document.querySelector('#selList li.need')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast(miss.length === 1 ? `「${proj(miss[0].pid)?.name}」の工程をえらんでください` : `工程をえらんでいない物件が${miss.length}つあります`);
+    return;
+  }
   db.entries[`${curDate}|${ed.wid}`] = { items: ed.items.map(i => { const o = { pid: i.pid }; if (i.procs.length) o.procs = i.procs; if (i.hours) o.hours = i.hours; return o; }), note: $('#entryNote').value.trim(), at: new Date().toISOString() };
   save(); toast(`${worker(ed.wid).name}さん　保存しました`);
   show('vHome'); renderHome();
