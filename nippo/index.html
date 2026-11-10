@@ -32,6 +32,7 @@
   </main>
   <footer class="foot">
     <span id="homeCount" class="muted"></span>
+    <button id="syncChip" type="button" class="syncchip" hidden></button>
     <button id="toAdmin" type="button" class="sm">管理</button>
   </footer>
 </section>
@@ -126,6 +127,8 @@
           <input id="recMonth" type="month">
           <button id="xlsxOut" type="button" class="primary">Excelで出す</button>
           <button id="csvOut" type="button">CSVで出す</button>
+          <button id="xlsxDrive" type="button" class="soft" hidden>Excelをドライブに保存</button>
+          <a id="xlsxLink" href="#" target="_blank" rel="noopener" hidden>保存したExcelを開く</a>
         </div>
         <p class="note">Excelには「明細」「日別」「物件別」「工程別」の4枚のシートが入ります。工程別は、1物件に工程を2つえらんだ日は半分ずつで数えます。物件別の「人工」は、1日に2物件なら0.5人工ずつ（時間を入れた日は時間の割合）で数えます。</p>
       </div>
@@ -135,6 +138,17 @@
     <!-- その他 -->
     <div id="tEtc" class="tab" hidden>
       <div class="card stack">
+        <h2>Googleドライブと同期</h2>
+        <p class="note">つなぐと、記録・物件・工程・作業員がGoogleドライブの「製作日報データ」フォルダに保存されます。同じGoogleアカウントでつないだ別のタブレットや事務所のパソコンでも、同じ記録を見たり、Excelを出したりできます。電波がない間の入力は、電波が戻ったら送ります。</p>
+        <p class="note">Googleの決まりで、1時間ごとにつなぎ直しが必要です。切れている時は「保存する」や「管理」を押した時に自動でつなぎ直します（Googleの小さな画面が一瞬開きます）。</p>
+        <p id="syncInfo" class="note"></p>
+        <div class="row wrap">
+          <button id="syncConnect" type="button" class="primary">Googleドライブにつなぐ</button>
+          <button id="syncNow" type="button" hidden>今すぐ同期</button>
+          <button id="syncOff" type="button" class="danger" hidden>同期をやめる</button>
+        </div>
+      </div>
+      <div class="card stack">
         <h2>管理画面のパスワード</h2>
         <p class="note">作業員がうっかり物件や記録を変えないように、管理画面に入る時の数字（4けた程度）を決められます。空にすると無しになります。</p>
         <div class="row"><input id="pinInput" type="password" inputmode="numeric" placeholder="例：1234" class="grow"><button id="pinSave" type="button">決める</button></div>
@@ -142,7 +156,7 @@
       </div>
       <div class="card stack">
         <h2>バックアップ</h2>
-        <p class="note">データはこのタブレットの中にだけ保存されています。月に一度くらい「保存」して、パソコンやドライブに残しておくと安心です。</p>
+        <p class="note">ドライブ同期を使っていない時は、データはこのタブレットの中にだけ保存されています。月に一度くらい「保存」して、パソコンやドライブに残しておくと安心です。</p>
         <div class="row wrap">
           <button id="bkSave" type="button" class="primary">バックアップを保存</button>
           <label class="filebtn">バックアップから戻す<input id="bkLoad" type="file" accept=".json,application/json" hidden></label>
@@ -154,6 +168,7 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<script src="sync.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

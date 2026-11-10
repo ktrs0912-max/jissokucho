@@ -100,3 +100,8 @@ table.rec td.empty{background:#fafbfd}
 /* 工程をえらんでいない物件（保存しようとした時） */
 .sellist li.need{background:#fdecec;border-radius:var(--r-sm);padding:8px 10px;box-shadow:0 0 0 2px var(--red) inset}
 .sellist li.need .procs::after{content:"← 工程をえらんでください";color:var(--red);font-weight:800;font-size:15px}
+/* ドライブ同期の表示 */
+.syncchip{min-height:42px;font-size:14px;padding:4px 14px;border-radius:21px;color:var(--ok);background:var(--oksoft);border-color:transparent;margin-left:auto;white-space:normal;text-align:left}
+.syncchip.warn{color:var(--warn);background:#fff3dc}
+.syncchip.err{color:var(--red);background:#fdecec}
+.note.warn{color:var(--warn);font-weight:700}.note.err{color:var(--red);font-weight:700}
