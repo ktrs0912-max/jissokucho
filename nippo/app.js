@@ -4,6 +4,8 @@
 //   projects … 物件   [{id, code, name, active, createdAt}]
 //   processes… 工程   [{id, name, active}]（切断・溶接・塗装。管理で増やせる）
 //   entries  … 記録   {"YYYY-MM-DD|作業員id": {items:[{pid, procs:[工程id], hours}], note, at}}
+//   tombs    … 消した印 {id または "e:記録のキー": 消した時刻}（ドライブ同期で、消した物がよみがえらないように）
+// 作業員・物件・工程には at（書き換えた時刻）と、作業員・工程には ord（並び順）を持たせる
 'use strict';
 const KEY = 'nippo.data.v1', PINKEY = 'nippo.pin';
 const $ = s => document.querySelector(s);
@@ -16,10 +18,65 @@ function load() {
   try { d = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
   if (!d || !d.workers) d = { workers: [], projects: [], entries: {} };
   if (!d.processes) d.processes = defaultProcs(); // 工程を入れる前の版のデータにも足す
+  if (!d.tombs) d.tombs = {};
+  for (const k of ['workers', 'processes']) d[k].forEach((x, i) => { if (x.ord == null) x.ord = i; });
+  sortOrd(d);
   return d;
 }
-function defaultProcs() { return ['切断', '溶接', '塗装'].map((name, i) => ({ id: 'p' + i, name, active: true })); }
-function save() { localStorage.setItem(KEY, JSON.stringify(db)); }
+function sortOrd(d) { for (const k of ['workers', 'processes']) d[k].sort((a, b) => a.ord - b.ord); }
+const nowIso = () => new Date().toISOString();
+const nextOrd = list => list.reduce((m, x) => Math.max(m, x.ord ?? 0), -1) + 1;
+function defaultProcs() { return ['切断', '溶接', '塗装'].map((name, i) => ({ id: 'p' + i, name, active: true, ord: i })); }
+// 保存する。書き換えた物を渡すと、書き換えた時刻を付ける（ドライブ同期で新しいほうを残すため）
+function save(...touched) {
+  const t = nowIso(); for (const x of touched) x.at = t;
+  localStorage.setItem(KEY, JSON.stringify(db));
+  if (typeof Sync !== 'undefined') Sync.changed();
+}
+// 消す時は「消した印」を残す
+function tomb(id) { db.tombs[id] = nowIso(); }
+
+// ---------- ドライブ同期とのやりとり ----------
+// 中身を比べるための形（キーの並びをそろえる）
+function canon(v) {
+  if (Array.isArray(v)) return v.map(canon);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.keys(v).sort().map(k => [k, canon(v[k])]));
+  return v;
+}
+const App = {
+  exportDb: () => db,
+  normalize: d => canon({ workers: [...(d.workers || [])].sort((a, b) => a.id < b.id ? -1 : 1), projects: [...(d.projects || [])].sort((a, b) => a.id < b.id ? -1 : 1), processes: [...(d.processes || [])].sort((a, b) => a.id < b.id ? -1 : 1), entries: d.entries || {}, tombs: d.tombs || {} }),
+  // ドライブの中身を手元に合わせ入れる。手元が変わったら true
+  mergeRemote(r) {
+    const before = JSON.stringify(App.normalize(db));
+    // 初めてつないだ端末で、まだ見本の作業員しかいない時は、見本を捨ててドライブの中身を使う
+    const pristine = !db.projects.length && !Object.keys(db.entries).length && db.workers.every(w => !w.at);
+    if (pristine && (r.workers || []).length) db.workers = [];
+    const tombs = { ...(r.tombs || {}) };
+    for (const [id, t] of Object.entries(db.tombs)) if (!tombs[id] || t > tombs[id]) tombs[id] = t;
+    const dead = (id, at) => tombs[id] && tombs[id] >= (at || '');
+    for (const k of ['workers', 'projects', 'processes']) {
+      const m = new Map(db[k].map(x => [x.id, x]));
+      for (const x of r[k] || []) { const l = m.get(x.id); if (!l || (x.at || '') > (l.at || '')) m.set(x.id, x); }
+      db[k] = [...m.values()].filter(x => !dead(x.id, x.at));
+    }
+    for (const [key, e] of Object.entries(r.entries || {})) { const l = db.entries[key]; if (!l || (e.at || '') > (l.at || '')) db.entries[key] = e; }
+    for (const [key, e] of Object.entries(db.entries)) if (dead('e:' + key, e.at)) delete db.entries[key];
+    const old = new Date(Date.now() - 400 * 864e5).toISOString(); // 古すぎる消した印は整理
+    for (const id of Object.keys(tombs)) if (tombs[id] < old) delete tombs[id];
+    db.tombs = tombs;
+    sortOrd(db);
+    localStorage.setItem(KEY, JSON.stringify(db));
+    const changed = JSON.stringify(App.normalize(db)) !== before;
+    if (changed) refresh();
+    return changed;
+  },
+};
+// ドライブから新しい入力が来たら、いま見ている画面を描き直す（入力中の画面はそのまま）
+function refresh() {
+  if (!$('#vHome').hidden) renderHome();
+  else if (!$('#vAdmin').hidden) renderAdmin();
+}
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const proj = id => db.projects.find(p => p.id === id);
 const worker = id => db.workers.find(w => w.id === id);
@@ -158,6 +215,7 @@ $('#copyLast').onclick = () => {
 $('#projFilter').oninput = renderEntry;
 $('#entryBack').onclick = () => { show('vHome'); renderHome(); };
 $('#entrySave').onclick = () => {
+  if (typeof Sync !== 'undefined') Sync.ensure(); // 同期が切れていたらつなぎ直す（ボタンを押した時でないとGoogleの画面が開けない）
   if (!ed.items.length) { toast('物件をえらんでください'); return; }
   // 工程は必ずえらぶ。えらんでいない物件は赤くして、そこまで画面を動かす
   const miss = ed.items.filter(i => !i.procs.length);
@@ -168,18 +226,20 @@ $('#entrySave').onclick = () => {
     toast(miss.length === 1 ? `「${proj(miss[0].pid)?.name}」の工程をえらんでください` : `工程をえらんでいない物件が${miss.length}つあります`);
     return;
   }
+  delete db.tombs[`e:${curDate}|${ed.wid}`];
   db.entries[`${curDate}|${ed.wid}`] = { items: ed.items.map(i => { const o = { pid: i.pid }; if (i.procs.length) o.procs = i.procs; if (i.hours) o.hours = i.hours; return o; }), note: $('#entryNote').value.trim(), at: new Date().toISOString() };
   save(); toast(`${worker(ed.wid).name}さん　保存しました`);
   show('vHome'); renderHome();
 };
 $('#entryClear').onclick = () => {
   if (!confirm('この日の入力を消しますか？')) return;
-  delete db.entries[`${curDate}|${ed.wid}`]; save(); toast('消しました');
+  delete db.entries[`${curDate}|${ed.wid}`]; tomb(`e:${curDate}|${ed.wid}`); save(); toast('消しました');
   show('vHome'); renderHome();
 };
 
 // ---------- 管理 ----------
 $('#toAdmin').onclick = () => {
+  if (typeof Sync !== 'undefined') Sync.ensure();
   const pin = localStorage.getItem(PINKEY);
   if (pin && prompt('管理画面のパスワードを入れてください') !== pin) { toast('パスワードがちがいます'); return; }
   show('vAdmin'); renderAdmin();
@@ -200,8 +260,8 @@ $('#projForm').onsubmit = ev => {
   const name = $('#pName').value.trim(), code = $('#pCode').value.trim();
   if (!name) return;
   if (db.projects.some(p => p.name === name && p.code === code)) { toast('同じ物件があります'); return; }
-  db.projects.push({ id: uid(), code, name, active: true, createdAt: new Date().toISOString() });
-  save(); $('#pName').value = ''; $('#pCode').value = ''; $('#pCode').focus(); renderProjAdmin(); toast('追加しました');
+  const np = { id: uid(), code, name, active: true, createdAt: nowIso() };
+  db.projects.push(np); save(np); $('#pName').value = ''; $('#pCode').value = ''; $('#pCode').focus(); renderProjAdmin(); toast('追加しました');
 };
 $('#showDone').onchange = renderProjAdmin;
 function renderProjAdmin() {
@@ -215,12 +275,12 @@ function renderProjAdmin() {
       el('button', { type: 'button', class: 'sm', onclick: () => {
         const code = prompt('工事番号', p.code); if (code === null) return;
         const name = prompt('物件名', p.name); if (!name || !name.trim()) return;
-        p.code = code.trim(); p.name = name.trim(); save(); renderProjAdmin();
+        p.code = code.trim(); p.name = name.trim(); save(p); renderProjAdmin();
       } }, 'なおす'),
-      el('button', { type: 'button', class: 'sm', onclick: () => { p.active = !p.active; save(); renderProjAdmin(); toast(p.active ? '入力画面に戻しました' : '完了にしました（入力画面に出なくなります）'); } }, p.active ? '完了にする' : '戻す'),
+      el('button', { type: 'button', class: 'sm', onclick: () => { p.active = !p.active; save(p); renderProjAdmin(); toast(p.active ? '入力画面に戻しました' : '完了にしました（入力画面に出なくなります）'); } }, p.active ? '完了にする' : '戻す'),
       el('button', { type: 'button', class: 'sm danger', onclick: () => {
         if (usedP(p.id)) { alert('この物件は記録に使われているので消せません。「完了にする」を使ってください。'); return; }
-        if (confirm(`「${p.name}」を消しますか？`)) { db.projects = db.projects.filter(x => x !== p); save(); renderProjAdmin(); }
+        if (confirm(`「${p.name}」を消しますか？`)) { db.projects = db.projects.filter(x => x !== p); tomb(p.id); save(); renderProjAdmin(); }
       } }, '消す')));
   }
 }
@@ -231,22 +291,23 @@ $('#procForm').onsubmit = ev => {
   ev.preventDefault();
   const name = $('#prName').value.trim(); if (!name) return;
   if (db.processes.some(x => x.name === name)) { toast('同じ工程があります'); return; }
-  db.processes.push({ id: uid(), name, active: true }); save(); $('#prName').value = ''; renderProcAdmin(); toast('追加しました');
+  const nx = { id: uid(), name, active: true, ord: nextOrd(db.processes) };
+  db.processes.push(nx); save(nx); $('#prName').value = ''; renderProcAdmin(); toast('追加しました');
 };
 function renderProcAdmin() {
   const ul = $('#procAdmin'); ul.textContent = '';
   if (!db.processes.length) ul.append(el('li', {}, el('span', { class: 'muted' }, '工程がありません')));
   db.processes.forEach((x, i) => {
-    const move = d => { const j = i + d; if (j < 0 || j >= db.processes.length) return; [db.processes[i], db.processes[j]] = [db.processes[j], db.processes[i]]; save(); renderProcAdmin(); };
+    const move = d => { const j = i + d; if (j < 0 || j >= db.processes.length) return; const a = db.processes[i], b = db.processes[j]; [a.ord, b.ord] = [b.ord, a.ord]; if (a.ord === b.ord) b.ord = a.ord + d; sortOrd(db); save(a, b); renderProcAdmin(); };
     ul.append(el('li', { class: x.active ? '' : 'off' },
       el('span', { class: 'nm' }, x.name), x.active ? null : el('span', { class: 'tag' }, '使わない'),
       el('button', { type: 'button', class: 'sm', onclick: () => move(-1), 'aria-label': '上へ' }, '↑'),
       el('button', { type: 'button', class: 'sm', onclick: () => move(1), 'aria-label': '下へ' }, '↓'),
-      el('button', { type: 'button', class: 'sm', onclick: () => { const n = prompt('工程の名前', x.name); if (n && n.trim()) { x.name = n.trim(); save(); renderProcAdmin(); } } }, '名前をなおす'),
-      el('button', { type: 'button', class: 'sm', onclick: () => { x.active = !x.active; save(); renderProcAdmin(); } }, x.active ? '使わない' : '戻す'),
+      el('button', { type: 'button', class: 'sm', onclick: () => { const n = prompt('工程の名前', x.name); if (n && n.trim()) { x.name = n.trim(); save(x); renderProcAdmin(); } } }, '名前をなおす'),
+      el('button', { type: 'button', class: 'sm', onclick: () => { x.active = !x.active; save(x); renderProcAdmin(); } }, x.active ? '使わない' : '戻す'),
       el('button', { type: 'button', class: 'sm danger', onclick: () => {
         if (usedPr(x.id)) { alert('この工程は記録に使われているので消せません。「使わない」にしてください。'); return; }
-        if (confirm(`「${x.name}」を消しますか？`)) { db.processes = db.processes.filter(y => y !== x); save(); renderProcAdmin(); }
+        if (confirm(`「${x.name}」を消しますか？`)) { db.processes = db.processes.filter(y => y !== x); tomb(x.id); save(); renderProcAdmin(); }
       } }, '消す')));
   });
 }
@@ -255,22 +316,23 @@ function renderProcAdmin() {
 $('#workForm').onsubmit = ev => {
   ev.preventDefault();
   const name = $('#wName').value.trim(); if (!name) return;
-  db.workers.push({ id: uid(), name, active: true }); save(); $('#wName').value = ''; renderWorkAdmin(); toast('追加しました');
+  const nw = { id: uid(), name, active: true, ord: nextOrd(db.workers) };
+  db.workers.push(nw); save(nw); $('#wName').value = ''; renderWorkAdmin(); toast('追加しました');
 };
 function renderWorkAdmin() {
   const ul = $('#workAdmin'); ul.textContent = '';
   if (!db.workers.length) ul.append(el('li', {}, el('span', { class: 'muted' }, '作業員がいません')));
   db.workers.forEach((w, i) => {
-    const move = d => { const j = i + d; if (j < 0 || j >= db.workers.length) return; [db.workers[i], db.workers[j]] = [db.workers[j], db.workers[i]]; save(); renderWorkAdmin(); };
+    const move = d => { const j = i + d; if (j < 0 || j >= db.workers.length) return; const a = db.workers[i], b = db.workers[j]; [a.ord, b.ord] = [b.ord, a.ord]; if (a.ord === b.ord) b.ord = a.ord + d; sortOrd(db); save(a, b); renderWorkAdmin(); };
     ul.append(el('li', { class: w.active ? '' : 'off' },
       el('span', { class: 'nm' }, w.name), w.active ? null : el('span', { class: 'tag' }, '休み中'),
       el('button', { type: 'button', class: 'sm', onclick: () => move(-1), 'aria-label': '上へ' }, '↑'),
       el('button', { type: 'button', class: 'sm', onclick: () => move(1), 'aria-label': '下へ' }, '↓'),
-      el('button', { type: 'button', class: 'sm', onclick: () => { const n = prompt('名前', w.name); if (n && n.trim()) { w.name = n.trim(); save(); renderWorkAdmin(); } } }, '名前をなおす'),
-      el('button', { type: 'button', class: 'sm', onclick: () => { w.active = !w.active; save(); renderWorkAdmin(); } }, w.active ? '休み中にする' : '戻す'),
+      el('button', { type: 'button', class: 'sm', onclick: () => { const n = prompt('名前', w.name); if (n && n.trim()) { w.name = n.trim(); save(w); renderWorkAdmin(); } } }, '名前をなおす'),
+      el('button', { type: 'button', class: 'sm', onclick: () => { w.active = !w.active; save(w); renderWorkAdmin(); } }, w.active ? '休み中にする' : '戻す'),
       el('button', { type: 'button', class: 'sm danger', onclick: () => {
         if (usedW(w.id)) { alert('この人の記録があるので消せません。「休み中にする」を使ってください。'); return; }
-        if (confirm(`${w.name}さんを消しますか？`)) { db.workers = db.workers.filter(x => x !== w); save(); renderWorkAdmin(); }
+        if (confirm(`${w.name}さんを消しますか？`)) { db.workers = db.workers.filter(x => x !== w); tomb(w.id); save(); renderWorkAdmin(); }
       } }, '消す')));
   });
 }
@@ -323,7 +385,9 @@ function loadExcel() {
   if (window.ExcelJS) return Promise.resolve();
   return new Promise((ok, ng) => { const s = el('script', { src: '../lib/exceljs/exceljs.min.js' }); s.onload = ok; s.onerror = () => ng(new Error('Excelの部品を読めませんでした')); document.head.append(s); });
 }
-$('#xlsxOut').onclick = async () => {
+$('#xlsxOut').onclick = () => makeXlsx(false);
+$('#xlsxDrive').onclick = () => makeXlsx(true);
+async function makeXlsx(toDrive) {
   const m = $('#recMonth').value; const rows = monthRows(m);
   if (!rows.length) { toast('この月の記録がありません'); return; }
   try { await loadExcel(); } catch (e) { alert(e.message); return; }
@@ -377,8 +441,15 @@ $('#xlsxOut').onclick = async () => {
     s4.addRow([a.code, a.name, ...vals.map(r2), r2(vals.reduce((t, v) => t + (v || 0), 0))]);
   });
   const buf = await wb.xlsx.writeBuffer();
-  download(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), `製作日報_${m}.xlsx`);
-};
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), name = `製作日報_${m}.xlsx`;
+  if (!toDrive) { download(blob, name); return; }
+  try {
+    toast('ドライブに保存しています…');
+    const r = await Sync.saveExport(name, blob);
+    toast(r.overwritten ? 'ドライブのExcelを新しくしました' : 'ドライブに保存しました');
+    const a = $('#xlsxLink'); a.href = r.url; a.hidden = false;
+  } catch (e) { alert('ドライブに保存できませんでした：' + e.message); }
+}
 
 // ---------- その他 ----------
 $('#pinSave').onclick = () => {
@@ -393,7 +464,16 @@ $('#bkLoad').onchange = async ev => {
     const j = JSON.parse(await f.text());
     if (j.app !== 'nippo' || !j.db || !Array.isArray(j.db.workers)) throw 0;
     if (!confirm('いまのデータをバックアップの内容に置きかえます。よろしいですか？')) return;
-    db = j.db; save(); renderAdmin(); toast('バックアップから戻しました');
+    // バックアップの中身を「いま書き換えた」ことにする（同期しても戻した内容が勝つように）。今あってバックアップにない物は消す
+    const t = nowIso(), keep = new Set();
+    for (const k of ['workers', 'projects', 'processes']) for (const x of j.db[k] || []) { x.at = t; keep.add(x.id); }
+    for (const e of Object.values(j.db.entries || {})) e.at = t;
+    const tombs = {};
+    for (const k of ['workers', 'projects', 'processes']) for (const x of db[k]) if (!keep.has(x.id)) tombs[x.id] = t;
+    for (const key of Object.keys(db.entries)) if (!(j.db.entries || {})[key]) tombs['e:' + key] = t;
+    db = { workers: [], projects: [], processes: defaultProcs(), entries: {}, ...j.db, tombs };
+    for (const k of ['workers', 'processes']) db[k].forEach((x, i) => { if (x.ord == null) x.ord = i; });
+    sortOrd(db); save(); renderAdmin(); toast('バックアップから戻しました');
   } catch (e) { alert('このファイルは製作日報のバックアップではないようです'); }
 };
 
@@ -403,8 +483,36 @@ let lastToday = today();
 setInterval(() => { if (today() !== lastToday) { if (curDate === lastToday) curDate = today(); lastToday = today(); if (!$('#vHome').hidden) renderHome(); } }, 60000);
 // 初めて開いた時は、見本の作業員5人を入れておく（管理で名前をなおせる）
 if (!db.workers.length && !db.projects.length && !Object.keys(db.entries).length) {
-  db.workers = ['作業員A', '作業員B', '作業員C', '作業員D', '作業員E'].map(name => ({ id: uid(), name, active: true }));
+  db.workers = ['作業員A', '作業員B', '作業員C', '作業員D', '作業員E'].map((name, i) => ({ id: 'w' + i, name, active: true, ord: i }));
   save();
 }
 renderHome();
+
+// ---------- ドライブ同期の表示とボタン ----------
+const hm = s => { const d = new Date(s); return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; };
+function renderSync(st = Sync.state()) {
+  const chip = $('#syncChip'), info = $('#syncInfo');
+  let text = '', cls = '';
+  if (!st.wasOn) text = '';
+  else if (st.running) text = '同期中…';
+  else if (st.error) { text = st.error; cls = 'err'; }
+  else if (st.offline) { text = '電波なし（電波が戻ったら送ります）'; cls = 'warn'; }
+  else if (!st.connected) { text = 'ドライブ同期が切れています（タップでつなぎ直す）'; cls = 'warn'; }
+  else text = st.last ? `ドライブ同期済み ${hm(st.last)}` : 'ドライブにつながりました';
+  chip.hidden = !st.wasOn; chip.textContent = text; chip.className = 'syncchip ' + cls;
+  info.textContent = st.wasOn ? (st.email ? `${st.email} とつながっています。` : '') + text : 'まだつないでいません。';
+  info.className = 'note ' + cls;
+  $('#syncConnect').hidden = st.wasOn && st.connected;
+  $('#syncConnect').textContent = st.wasOn ? 'つなぎ直す' : 'Googleドライブにつなぐ';
+  $('#syncNow').hidden = !st.connected; $('#syncOff').hidden = !st.wasOn;
+  $('#xlsxDrive').hidden = !st.connected;
+}
+Sync.onChange(renderSync); renderSync();
+const doConnect = () => Sync.connect(Sync.wasOn()).catch(e => { toast(e.message); renderSync(); });
+$('#syncChip').onclick = () => { const st = Sync.state(); if (!st.connected) doConnect(); else Sync.syncNow(); };
+$('#syncConnect').onclick = doConnect;
+$('#syncNow').onclick = () => Sync.syncNow();
+$('#syncOff').onclick = () => { if (confirm('ドライブとの同期をやめますか？（このタブレットとドライブのデータは消えません）')) Sync.disconnect(); };
+if (Sync.connected()) Sync.syncNow();
+
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
