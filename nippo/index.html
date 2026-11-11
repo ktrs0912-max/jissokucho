@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#2f6fb5">
+<meta name="theme-color" content="#f5f6f9">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="製作日報">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,7 +17,7 @@
 <!-- ホーム：日付と作業員の一覧 -->
 <section id="vHome" class="view">
   <header class="top">
-    <h1>製作日報</h1>
+    <h1 class="brand"><img src="icon-192.png" alt="" width="36" height="36">製作日報</h1>
     <div class="datenav">
       <button id="dPrev" type="button" aria-label="前の日">‹</button>
       <button id="dLabel" type="button" class="datelabel"></button>
@@ -26,7 +26,17 @@
     <button id="dToday" type="button" class="sm">今日</button>
   </header>
   <main class="pad">
-    <p class="lead">自分の名前をタップして、今日つくった物件をえらんでください。</p>
+    <div id="hero" class="hero">
+      <div class="herotext">
+        <p id="heroDay" class="eyebrow"></p>
+        <h2>自分の名前をタップ</h2>
+        <p class="herosub">つくった物件と工程をえらんで、保存します。</p>
+      </div>
+      <div id="prog" class="prog">
+        <p class="progtxt"><b id="progDone">0</b><span id="progAll"></span><span class="proglabel">入力済み</span></p>
+        <div class="progbar"><i id="progBar"></i></div>
+      </div>
+    </div>
     <div id="workerGrid" class="workers"></div>
     <p id="homeEmpty" class="note" hidden>作業員がまだいません。右下の「管理」から作業員と物件を登録してください。</p>
     <div id="forgot" class="card forgot" hidden>
@@ -35,7 +45,6 @@
     </div>
   </main>
   <footer class="foot">
-    <span id="homeCount" class="muted"></span>
     <button id="syncChip" type="button" class="syncchip" hidden></button>
     <button id="toAdmin" type="button" class="sm">管理</button>
   </footer>

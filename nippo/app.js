@@ -136,12 +136,19 @@ function renderHome() {
   for (const w of ws) {
     const e = db.entries[`${curDate}|${w.id}`];
     if (e) done++;
+    // 頭文字の丸は、人ごとに色を変える（並び順で決まる）
+    const hue = [221, 262, 190, 24, 334, 152, 45, 285][db.workers.indexOf(w) % 8];
     g.append(el('button', { type: 'button', class: 'wcard' + (e ? (e.off ? ' off' : ' done') : ''), onclick: () => openEntry(w.id) },
-      el('span', { class: 'nm' }, w.name),
+      el('span', { class: 'whead' }, el('span', { class: 'av', style: `--h:${hue}` }, [...w.name][0] || '?'), el('span', { class: 'nm' }, w.name)),
       el('span', { class: 'st' }, e ? (e.off ? e.off : '✓ 入力済み') : '未入力'),
       e && !e.off ? el('span', { class: 'pj' }, entryText(e, false, '\n')) : null));
   }
-  $('#homeCount').textContent = ws.length ? `${jp(curDate)}：${ws.length}人中 ${done}人 入力済み` : '';
+  // 上の進みぐあい（何人中 何人 入力済み）
+  $('#hero').hidden = !ws.length;
+  $('#heroDay').textContent = curDate === today() ? '今日の入力' : `${jp(curDate)} の入力`;
+  $('#progDone').textContent = done; $('#progAll').textContent = `/ ${ws.length}人`;
+  $('#progBar').style.width = (ws.length ? Math.round(done / ws.length * 100) : 0) + '%';
+  $('#prog').classList.toggle('full', ws.length > 0 && done === ws.length);
   renderForgot();
 }
 // ---------- 入れ忘れ ----------
