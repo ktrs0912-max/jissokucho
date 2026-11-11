@@ -2,7 +2,7 @@
 // データはこのタブレットの中（localStorage）に保存する
 //   workers  … 作業員 [{id, name, active}]（並び順は配列の順）
 //   projects … 物件   [{id, code, name, active, createdAt}]
-//   processes… 工程   [{id, name, active}]（切断・溶接・塗装。管理で増やせる）
+//   processes… 工程   [{id, name, active}]（手配・バラ図・切断・プレス・組み立て・部品・梱包・出荷。管理で変えられる）
 //   entries  … 記録   {"YYYY-MM-DD|作業員id": {items:[{pid, procs:[工程id], hours}], note, at}}
 //            休みの日は {items:[], off:'休み'|'有給'|'欠勤', note, at}
 //   tombs    … 消した印 {id または "e:記録のキー": 消した時刻}（ドライブ同期で、消した物がよみがえらないように）
@@ -13,6 +13,9 @@ const $ = s => document.querySelector(s);
 const WD = ['日', '月', '火', '水', '木', '金', '土'];
 
 // ---------- 保存 ----------
+// 初めの工程。どの端末でも同じid・同じ時刻にして、ドライブ同期で二重にならないようにする（切断は前の版と同じ p0）
+const PROC_AT = '2026-11-11T00:00:00.000Z';
+const DEFAULT_PROCS = [['q0', '手配'], ['q1', 'バラ図'], ['p0', '切断'], ['q3', 'プレス'], ['q4', '組み立て'], ['q5', '部品'], ['q6', '梱包'], ['q7', '出荷']];
 let db = load();
 function load() {
   let d = null;
@@ -20,6 +23,7 @@ function load() {
   if (!d || !d.workers) d = { workers: [], projects: [], entries: {} };
   if (!d.processes) d.processes = defaultProcs(); // 工程を入れる前の版のデータにも足す
   if (!d.tombs) d.tombs = {};
+  if (migrateProcs(d)) localStorage.setItem(KEY, JSON.stringify(d));
   for (const k of ['workers', 'processes']) d[k].forEach((x, i) => { if (x.ord == null) x.ord = i; });
   sortOrd(d);
   return d;
@@ -27,7 +31,17 @@ function load() {
 function sortOrd(d) { for (const k of ['workers', 'processes']) d[k].sort((a, b) => a.ord - b.ord); }
 const nowIso = () => new Date().toISOString();
 const nextOrd = list => list.reduce((m, x) => Math.max(m, x.ord ?? 0), -1) + 1;
-function defaultProcs() { return ['切断', '溶接', '塗装'].map((name, i) => ({ id: 'p' + i, name, active: true, ord: i })); }
+function defaultProcs() { return DEFAULT_PROCS.map(([id, name], i) => ({ id, name, active: true, ord: i, at: PROC_AT })); }
+// 前の版の初めの工程（切断・溶接・塗装）を一度も変えていなければ、新しい工程に入れかえる。
+// 溶接・塗装は前の記録で使っているかもしれないので、消さずに「使わない」にする（管理→工程から消せる）
+function migrateProcs(d) {
+  const ps = d.processes;
+  const old = ps.length === 3 && ps.every(x => !x.at) && ['p0:切断', 'p1:溶接', 'p2:塗装'].every(k => ps.some(x => `${x.id}:${x.name}` === k));
+  if (!old) return false;
+  const keep = ps.filter(x => x.id !== 'p0').map(x => ({ ...x, active: false, ord: 100 + Number(x.id.slice(1)), at: PROC_AT }));
+  d.processes = [...defaultProcs(), ...keep];
+  return true;
+}
 // 保存する。書き換えた物を渡すと、書き換えた時刻を付ける（ドライブ同期で新しいほうを残すため）
 function save(...touched) {
   const t = nowIso(); for (const x of touched) x.at = t;
@@ -50,6 +64,7 @@ const App = {
   // ドライブの中身を手元に合わせ入れる。手元が変わったら true
   mergeRemote(r) {
     const before = JSON.stringify(App.normalize(db));
+    if (r.processes) migrateProcs(r); // まだ前の版のままの端末から来た工程も、新しい工程に入れかえてから合わせる
     // 初めてつないだ端末で、まだ見本の作業員しかいない時は、見本を捨ててドライブの中身を使う
     const pristine = !db.projects.length && !Object.keys(db.entries).length && db.workers.every(w => !w.at);
     if (pristine && (r.workers || []).length) db.workers = [];

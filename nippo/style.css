@@ -135,3 +135,5 @@ table.rec td.offc{color:var(--muted);background:#eef1f5}
 .gone h2 small{font-size:13px;font-weight:400;margin-left:6px}
 .gonelist{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:6px}
 .goneitem{background:var(--bg);border-radius:var(--r-sm);padding:8px 10px}
+/* 工程がふえたので、工程はいつも物件名の下の段にまとめて出す（1段目：物件名・時間・はずす） */
+.sellist .procs{order:5;flex-basis:100%}
