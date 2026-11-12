@@ -45,7 +45,8 @@ function migrateProcs(d) {
 // 保存する。書き換えた物を渡すと、書き換えた時刻を付ける（ドライブ同期で新しいほうを残すため）
 function save(...touched) {
   const t = nowIso(); for (const x of touched) x.at = t;
-  localStorage.setItem(KEY, JSON.stringify(db));
+  try { localStorage.setItem(KEY, JSON.stringify(db)); }
+  catch (e) { alert('保存できませんでした。タブレットの空きが足りないか、ブラウザが保存を止めています。このまま閉じると今の入力が消えるので、管理の人に知らせてください。'); return; }
   if (typeof Sync !== 'undefined') Sync.changed();
 }
 // 消す時は「消した印」を残す
@@ -93,6 +94,8 @@ function refresh() {
   if (!$('#vHome').hidden) renderHome();
   else if (!$('#vAdmin').hidden) renderAdmin();
 }
+// 名前の比べ方：全角・半角や空白のちがいは同じとみなす（「5丁目」と「５丁目」など）
+const normName = v => (v || '').normalize('NFKC').replace(/[\s　]/g, '').toLowerCase();
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const proj = id => db.projects.find(p => p.id === id);
 const worker = id => db.workers.find(w => w.id === id);
@@ -181,44 +184,77 @@ function renderForgot() {
 $('#dPrev').onclick = () => { curDate = addDays(curDate, -1); renderHome(); };
 $('#dNext').onclick = () => { if (curDate < today()) { curDate = addDays(curDate, 1); renderHome(); } };
 $('#dToday').onclick = () => { curDate = today(); renderHome(); };
+// 日付をタップ：カレンダーからえらぶ（カレンダーを出せないブラウザでは文字で入れる）
 $('#dLabel').onclick = () => {
-  const s = prompt('日付を入れてください（例：2026-11-05）', curDate);
-  if (s && /^\d{4}-\d{2}-\d{2}$/.test(s) && s <= today()) { curDate = s; renderHome(); }
+  const pick = $('#dPick'); pick.max = today(); pick.value = curDate;
+  try { pick.showPicker(); }
+  catch (e) {
+    const s = prompt('日付を入れてください（例：2026-11-05）', curDate);
+    if (s && /^\d{4}-\d{2}-\d{2}$/.test(s) && s <= today()) { curDate = s; renderHome(); }
+  }
 };
+$('#dPick').onchange = ev => { const s = ev.target.value; if (s && s <= today()) { curDate = s; renderHome(); } };
 
 // ---------- 入力 ----------
 let ed = null; // 入力中 {wid, items:[{pid,hours}]}
 function openEntry(wid) {
   const e = db.entries[`${curDate}|${wid}`];
-  ed = { wid, items: e ? e.items.map(i => ({ ...i, procs: [...(i.procs || [])] })) : [], off: e?.off || '' };
+  ed = { wid, items: e ? e.items.map(i => ({ ...i, procs: [...(i.procs || [])] })) : [], off: e?.off || '', showAll: false };
   $('#entryTitle').textContent = `${worker(wid).name}さん　${jp(curDate)}`;
   $('#entryNote').value = e ? e.note || '' : '';
   $('#projFilter').value = '';
   $('#entryClear').hidden = !e;
   renderEntry();
+  ed.snap = edSnap();
   show('vEntry');
 }
-// えらべる物件：使っている物件と、この人が最近使った物件を先に並べる
+// 入力の中身（開いた時とくらべて、書きかえたかどうかを見る）
+const edSnap = () => JSON.stringify([ed.items.map(i => [i.pid, i.procs, i.hours || 0]), $('#entryNote').value.trim()]);
+function leaveEntry() {
+  if (ed && ed.snap !== edSnap() && !confirm('保存していない入力があります。保存しないで戻りますか？')) return;
+  show('vHome'); renderHome();
+}
+// えらべる物件。物件が多い時（受注残から何十件も登録した時）は、この人が最近使った物件だけを先に出す
+const MANY = 12, RECENT_MAX = 8;
 function entryProjects() {
-  const recent = new Map();
+  const mine = new Map(), any = new Map(); // 物件id → 最後に使った日（自分／だれか）
   for (const [k, e] of Object.entries(db.entries)) {
     const [d, w] = k.split('|');
-    for (const i of e.items) { const score = (w === ed.wid ? 1e9 : 0) + Number(d.replace(/-/g, '')); if (!recent.has(i.pid) || recent.get(i.pid) < score) recent.set(i.pid, score); }
+    for (const i of e.items) { if (w === ed.wid && !(mine.get(i.pid) >= d)) mine.set(i.pid, d); if (!(any.get(i.pid) >= d)) any.set(i.pid, d); }
   }
   const sel = new Set(ed.items.map(i => i.pid));
-  return db.projects.filter(p => p.active || sel.has(p.id))
-    .sort((a, b) => (recent.get(b.id) || 0) - (recent.get(a.id) || 0) || (a.code || '').localeCompare(b.code || '', 'ja', { numeric: true }) || a.name.localeCompare(b.name, 'ja'));
+  const byName = (a, b) => (a.code || '').localeCompare(b.code || '', 'ja', { numeric: true }) || a.name.localeCompare(b.name, 'ja');
+  const all = db.projects.filter(p => p.active || sel.has(p.id))
+    .sort((a, b) => (mine.get(b.id) || '').localeCompare(mine.get(a.id) || '') || (any.get(b.id) || '').localeCompare(any.get(a.id) || '') || byName(a, b));
+  const recent = all.filter(p => mine.has(p.id)).slice(0, RECENT_MAX);
+  return { all, recent };
 }
 function renderEntry() {
-  const q = $('#projFilter').value.trim().toLowerCase();
+  const q = normName($('#projFilter').value);
   const g = $('#projGrid'); g.textContent = '';
-  const list = entryProjects();
-  $('#projEmpty').hidden = list.length > 0;
-  for (const p of list) {
-    const on = ed.items.some(i => i.pid === p.id);
-    if (q && !on && !`${p.code} ${p.name}`.toLowerCase().includes(q)) continue;
-    g.append(el('button', { type: 'button', class: 'pbtn' + (on ? ' on' : ''), onclick: () => toggle(p.id) },
-      p.code ? el('span', { class: 'cd' }, p.code) : null, el('span', { class: 'nm' }, p.name)));
+  const { all, recent } = entryProjects();
+  const sel = new Set(ed.items.map(i => i.pid));
+  $('#projEmpty').hidden = all.length > 0;
+  const btn = p => el('button', { type: 'button', class: 'pbtn' + (sel.has(p.id) ? ' on' : ''), onclick: () => toggle(p.id) },
+    p.code ? el('span', { class: 'cd' }, p.code) : null, el('span', { class: 'nm' }, p.name));
+  const head = t => el('p', { class: 'ghead' }, t);
+  const more = $('#projMore'); more.hidden = true; $('#projNone').hidden = true;
+  if (q) { // さがしている時：全部の物件から
+    const hit = all.filter(p => normName(`${p.code} ${p.name}`).includes(q));
+    for (const p of hit) g.append(btn(p));
+    $('#projNone').hidden = hit.length > 0 || !all.length;
+  } else if (all.length <= MANY || !recent.length) { // 少ない時、またはこの人がまだ何も入れていない時：全部
+    for (const p of all) g.append(btn(p));
+  } else {
+    const rest = all.filter(p => !recent.includes(p));
+    g.append(head('よく使う物件'));
+    for (const p of recent) g.append(btn(p));
+    // えらんだ物件は、たたんでいても見えるようにする
+    const selRest = rest.filter(p => sel.has(p.id));
+    if (ed.showAll) { g.append(head(`ほかの物件（${rest.length}件）`)); for (const p of rest) g.append(btn(p)); }
+    else for (const p of selRest) g.append(btn(p));
+    more.hidden = !rest.length;
+    more.textContent = ed.showAll ? 'ほかの物件をたたむ' : `ほかの物件も見る（${rest.length}件）`;
   }
   const box = $('#selBox'), ul = $('#selList'); ul.textContent = '';
   box.hidden = !ed.items.length;
@@ -263,7 +299,10 @@ function toggle(pid) {
   const i = ed.items.findIndex(x => x.pid === pid);
   if (i >= 0) ed.items.splice(i, 1); else ed.items.push({ pid, procs: [], hours: 0 });
   renderEntry();
+  // えらんだ時は、その物件の工程をえらぶ欄が見える所まで画面を動かす
+  if (i < 0) { const li = $('#selList').lastElementChild; li?.classList.add('fresh'); li?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 }
+$('#projMore').onclick = () => { ed.showAll = !ed.showAll; renderEntry(); };
 // この人の、今の日付より前でいちばん新しい記録
 function lastEntry() {
   let best = null;
@@ -279,7 +318,7 @@ $('#copyLast').onclick = () => {
   renderEntry(); toast(`${jp(l.d)}と同じ物件・工程をえらびました`);
 };
 $('#projFilter').oninput = renderEntry;
-$('#entryBack').onclick = () => { show('vHome'); renderHome(); };
+$('#entryBack').onclick = leaveEntry;
 $('#entrySave').onclick = () => {
   if (typeof Sync !== 'undefined') Sync.ensure(); // 同期が切れていたらつなぎ直す（ボタンを押した時でないとGoogleの画面が開けない）
   if (!ed.items.length) { toast('物件をえらんでください'); return; }
@@ -330,11 +369,13 @@ $('#projForm').onsubmit = ev => {
   db.projects.push(np); save(np); $('#pName').value = ''; $('#pCode').value = ''; $('#pCode').focus(); renderProjAdmin(); toast('追加しました');
 };
 $('#showDone').onchange = renderProjAdmin;
+$('#projSearch').oninput = renderProjAdmin;
 function renderProjAdmin() {
   const ul = $('#projAdmin'); ul.textContent = '';
   const all = $('#showDone').checked;
-  const list = db.projects.filter(p => all || p.active).sort((a, b) => (b.active - a.active) || (a.code || '').localeCompare(b.code || '', 'ja', { numeric: true }) || a.name.localeCompare(b.name, 'ja'));
-  if (!list.length) ul.append(el('li', {}, el('span', { class: 'muted' }, '物件がありません')));
+  const pq = normName($('#projSearch').value);
+  const list = db.projects.filter(p => (all || p.active) && (!pq || normName(`${p.code} ${p.name}`).includes(pq))).sort((a, b) => (b.active - a.active) || (a.code || '').localeCompare(b.code || '', 'ja', { numeric: true }) || a.name.localeCompare(b.name, 'ja'));
+  if (!list.length) ul.append(el('li', {}, el('span', { class: 'muted' }, pq ? 'さがした文字に合う物件がありません' : '物件がありません')));
   for (const p of list) {
     ul.append(el('li', { class: p.active ? '' : 'off' },
       el('span', { class: 'cd' }, p.code || '―'), el('span', { class: 'nm' }, p.name), p.active ? null : el('span', { class: 'tag' }, '完了'),
@@ -419,7 +460,7 @@ function renderRec() {
     const wd = parse(d).getDay(), cls = wd === 0 ? 'sun' : wd === 6 ? 'sat' : '';
     tb.append(el('tr', {}, el('th', { class: cls }, jp(d)), ...ws.map(w => {
       const e = db.entries[`${d}|${w.id}`];
-      return el('td', { class: e ? (e.off ? 'offc' : '') : 'empty' }, e ? entryText(e, true, ' / ') : '');
+      return el('td', { class: 'tap ' + (e ? (e.off ? 'offc' : '') : 'empty'), onclick: () => { if (d <= today()) goEntry(d, w.id); } }, e ? entryText(e, true, ' / ') : '');
     })));
   }
   t.append(tb);
@@ -616,8 +657,6 @@ function guessCols(rows) {
   return c;
 }
 const colName = c => { let s = ''; c++; while (c) { s = String.fromCharCode(65 + (c - 1) % 26) + s; c = Math.floor((c - 1) / 26); } return s; };
-// 名前の比べ方：全角・半角や空白のちがいは同じとみなす
-const normName = v => (v || '').normalize('NFKC').replace(/[\s　]/g, '').toLowerCase();
 const sameProject = (p, code, name) => code ? p.code === code : normName(p.name) === normName(name);
 // 取り込む候補：見出しより下で、物件名がある行。同じ物件（工事番号、なければ物件名が同じ）は1つにまとめる
 function impRows() {
@@ -751,9 +790,20 @@ $('#bkLoad').onchange = async ev => {
 };
 
 // ---------- はじめに ----------
+// 最後に画面をさわった時刻
+let lastTouch = Date.now();
+for (const ev of ['pointerdown', 'keydown', 'input']) document.addEventListener(ev, () => { lastTouch = Date.now(); }, true);
+const IDLE_MS = 5 * 60e3;
 // 日付が変わったら（夜通し開きっぱなしでも）ホームを今日に戻す
-let lastToday = today();
-setInterval(() => { if (today() !== lastToday) { if (curDate === lastToday) curDate = today(); lastToday = today(); if (!$('#vHome').hidden) renderHome(); } }, 60000);
+let lastToday = today(), wantReload = false;
+setInterval(() => {
+  const idle = Date.now() - lastTouch;
+  // 入力や管理の画面を開いたまま5分さわらなければ、ホームに戻す（次の人が他の人の画面で入れてしまわないように。管理画面も閉じる）
+  if ($('#vHome').hidden && idle > IDLE_MS) { ed = null; imp = null; $('#impBox').hidden = true; show('vHome'); renderHome(); }
+  if (today() !== lastToday) { if (curDate === lastToday) curDate = today(); lastToday = today(); wantReload = true; if (!$('#vHome').hidden) renderHome(); }
+  // 日付が変わったあと、だれもさわっていなければ読み込み直す（開きっぱなしのタブレットでも新しい版になるように）
+  if (wantReload && !$('#vHome').hidden && idle > 60e3 && navigator.onLine !== false) { wantReload = false; location.reload(); }
+}, 30000);
 // 初めて開いた時は、見本の作業員5人を入れておく（管理で名前をなおせる）
 if (!db.workers.length && !db.projects.length && !Object.keys(db.entries).length) {
   db.workers = ['作業員A', '作業員B', '作業員C', '作業員D', '作業員E'].map((name, i) => ({ id: 'w' + i, name, active: true, ord: i }));

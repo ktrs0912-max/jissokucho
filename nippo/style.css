@@ -212,3 +212,17 @@ table.rec td.offc{color:var(--off);background:var(--offsoft)}
   .tabs button{min-width:84px}
   button.big{min-width:180px}
 }
+
+/* カレンダー（日付をタップすると開く。入力欄そのものは見せない） */
+.datenav{position:relative}
+.dpick{position:absolute;left:50%;bottom:0;width:1px;height:1px;min-height:0;padding:0;border:0;opacity:0;pointer-events:none}
+/* 物件の一覧の小見出しと「ほかの物件も見る」 */
+.ghead{grid-column:1/-1;margin:6px 2px -2px;font-size:13px;font-weight:800;letter-spacing:.1em;color:var(--muted)}
+.more{width:100%;margin-top:12px;border-style:dashed;border-radius:18px;color:var(--accent2);background:transparent;min-height:56px}
+/* えらんだばかりの物件を一瞬光らせる */
+.sellist li.fresh{animation:fresh 1.2s ease-out}
+@keyframes fresh{from{box-shadow:0 0 0 4px rgba(37,99,235,.35)}to{box-shadow:0 0 0 4px rgba(37,99,235,0)}}
+/* 記録の表：マスをタップして直せる */
+table.rec td.tap{cursor:pointer}
+table.rec td.tap:active{background:var(--accentsoft)}
+#selBox{margin-top:18px}
