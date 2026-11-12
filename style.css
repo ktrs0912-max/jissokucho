@@ -305,3 +305,5 @@ button.ghost{border:0;background:transparent;box-shadow:none;color:var(--muted);
 .drawview.wide .panel{display:none}
 .drawview.wide .stagecol{flex:1 1 100%}
 #wideBtn.on{background:var(--accent);color:#fff}
+.symrow .kp{color:#b07a10;font-weight:700}
+#kpPages .chip.on{background:var(--accent);color:#fff}

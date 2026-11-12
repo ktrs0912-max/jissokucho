@@ -94,7 +94,7 @@
     </div>
     <footer class="homefoot">
       <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-      <p class="note small">アプリの版：<span id="appVer">v59</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
+      <p class="note small">アプリの版：<span id="appVer">v60</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
     </footer>
   </main>
 </section>
@@ -184,6 +184,7 @@
         <div class="poshead">
           <strong id="posName"></strong>
           <button id="posRename" type="button" class="sm ghost" aria-label="位置の名前を変える">✎</button>
+          <button id="kpBtn" type="button" class="sm soft" hidden>キープラン</button>
           <span id="posMeta" class="small muted"></span>
           <span class="grow"></span>
           <span id="saveState" class="small muted"></span>
@@ -245,6 +246,17 @@
       <button value="cancel" formnovalidate>やめる</button>
     </div>
   </form>
+</dialog>
+
+<!-- キープランを見る（その位置が建物のどこにあるか） -->
+<dialog id="kpDlg" class="symdlg">
+  <div class="stack">
+    <h2 id="kpTitle"></h2>
+    <p id="kpNote" class="note"></p>
+    <div id="kpPages" class="row wrap"></div>
+    <div id="kpBox" class="symprev"><canvas id="kpCv"></canvas></div>
+    <div class="row"><span class="grow"></span><button type="button" id="kpClose">閉じる</button></div>
+  </div>
 </dialog>
 
 <!-- 位置の階の範囲をまとめて直す -->

@@ -679,7 +679,33 @@ $('#undoBtn').onclick = () => {
 
 /* ---------- 位置 ---------- */
 // 位置の名前の横に出す小さい文字（階の範囲・番号の数・符号が出てくるページ）
-const posMeta = p => `${p.floors[0] ?? ''}〜${p.floors[p.floors.length - 1] ?? ''}・番号 ${p.points.length}個` + (p.foundPages?.length ? `・出てくるページ：${p.foundPages.join('・')}` : '');
+const posMeta = p => { $('#kpBtn').hidden = !p.keyPlan?.length; return `${p.floors[0] ?? ''}〜${p.floors[p.floors.length - 1] ?? ''}・番号 ${p.points.length}個` + (p.foundPages?.length ? `・出てくるページ：${p.foundPages.join('・')}` : ''); };
+// キープランを見る：その位置がキープランのどこにあるかを赤丸で示す
+let kpAt = 0, kpSeq = 0;
+async function showKeyPlan(i = 0) {
+  const p = S.pos, list = p?.keyPlan; if (!list?.length) return;
+  kpAt = (i + list.length) % list.length; const k = list[kpAt], seq = ++kpSeq;
+  $('#kpTitle').textContent = `${p.name} のキープラン`;
+  $('#kpNote').textContent = `${k.floors.length ? floorsText(k.floors) + '　' : ''}${k.page}ページ` + (k.boxes.length ? `（赤丸が ${p.name}。${k.boxes.length}か所）` : '');
+  $('#kpPages').innerHTML = list.length > 1 ? list.map((q, n) => `<button type="button" class="chip${n === kpAt ? ' on' : ''}" data-kp="${n}">${q.floors.length ? floorsText(q.floors) : q.page + 'ページ'}</button>`).join('') : '';
+  if (!$('#kpDlg').open) $('#kpDlg').showModal();
+  const box = $('#kpBox'), c = $('#kpCv');
+  try {
+    const src = await pageSource(S.drawing, k.page); if (seq !== kpSeq) return;
+    const z = Math.min(src.photo ? 1 : 4, Math.max(src.photo ? 0.1 : 1, (box.clientWidth || 360) * 2 / src.w));
+    const tmp = document.createElement('canvas'); tmp.width = Math.round(src.w * z); tmp.height = Math.round(src.h * z);
+    const tg = tmp.getContext('2d'); tg.fillStyle = '#fff'; tg.fillRect(0, 0, tmp.width, tmp.height);
+    await src.draw(tg, z); if (seq !== kpSeq) return;
+    c.width = tmp.width; c.height = tmp.height; const g = c.getContext('2d'); g.drawImage(tmp, 0, 0);
+    g.strokeStyle = '#e5484d'; g.lineWidth = Math.max(3, 3 * z);
+    for (const b of k.boxes) { g.beginPath(); g.arc((b.x + b.w / 2) * z, (b.y + b.h / 2) * z, Math.max(b.w, b.h) * z * 0.75 + 8 * z, 0, Math.PI * 2); g.stroke(); }
+    const b = k.boxes[0];
+    box.scrollLeft = b ? (b.x + b.w / 2) * z - box.clientWidth / 2 : 0; box.scrollTop = b ? (b.y + b.h / 2) * z - box.clientHeight / 2 : 0;
+  } catch (err) { $('#kpNote').textContent = 'キープランを表示できませんでした：' + (err.message || err); }
+}
+$('#kpBtn').onclick = () => showKeyPlan(0);
+$('#kpPages').addEventListener('click', e => { const b = e.target.closest('[data-kp]'); if (b) showKeyPlan(+b.dataset.kp); });
+$('#kpClose').onclick = () => $('#kpDlg').close();
 // 以前の版が符号さがしでメモ欄に自動で入れた文は、出てくるページの記録に移してメモ欄を空にする（手で書き足していたら触らない）
 const AUTO_MEMO = /^図面から見つけた符号（出てくるページ：([\d・]+)）$/;
 async function moveAutoMemo(list) {
@@ -813,15 +839,65 @@ function findSymbols(pages) {
     if (stacked.size && !stacked.has(name.split('-')[0])) return;
     pg.forEach((c, p) => { if (!found.has(name)) found.set(name, new Map()); found.get(name).set(p, (found.get(name).get(p) || 0) + c); });
   });
-  // 割り当てるページ：その符号が何度も出てきて、ほかの符号が少ないページ（その符号の立・平面図）を選ぶ
+  // キープラン（どの階のどこにその符号があるかを示す図）のページと、その題名の階
+  const kpOf = new Map();
+  for (const pg of pages) { const t = keyPlanTitles(pg); if (t.length) kpOf.set(pg.page, t); }
+  // 割り当てるページ：その符号が何度も出てきて、ほかの符号が少ないページ（その符号の立・平面図）を選ぶ。キープランは後回し
   const perPage = new Map();
   found.forEach(pg => pg.forEach((_, p) => perPage.set(p, (perPage.get(p) || 0) + 1)));
   return [...found.entries()].map(([name, pg]) => {
     const score = p => pg.get(p) / perPage.get(p);
-    const best = [...pg.keys()].sort((a, b) => score(b) - score(a) || a - b)[0];
-    return { name, page: best, pages: [...pg.keys()].sort((a, b) => a - b), boxes: boxes.get(name) || new Map() };
+    const best = [...pg.keys()].sort((a, b) => kpOf.has(a) - kpOf.has(b) || score(b) - score(a) || a - b)[0];
+    const bx = boxes.get(name) || new Map();
+    // キープランごとに、この符号が書いてある場所と階。1枚に階の違うキープランが並んでいれば、近い題名の階にする
+    const kp = [...pg.keys()].filter(p => kpOf.has(p)).sort((a, b) => a - b).map(p => {
+      const titles = kpOf.get(p), bs = bx.get(p) || [], fl = new Set();
+      for (const b of bs.length ? bs : [null]) {
+        let t = titles[0];
+        if (b && titles.length > 1 && titles.every(q => q.x != null)) t = titles.reduce((m, q) => Math.hypot(q.x - b.x - b.w / 2, q.y - b.y - b.h / 2) < Math.hypot(m.x - b.x - b.w / 2, m.y - b.y - b.h / 2) ? q : m);
+        t.floors.forEach(f => fl.add(f));
+      }
+      return { page: p, floors: [...fl].sort((a, b) => a - b), boxes: bs.map(b => ({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) })) };
+    });
+    const kpFloors = [...new Set(kp.flatMap(k => k.floors))].sort((a, b) => a - b);
+    return { name, page: best, pages: [...pg.keys()].sort((a, b) => a - b), boxes: bx, kp, kpFloors };
   }).sort((a, b) => a.page - b.page || a.name.localeCompare(b.name, 'ja', { numeric: true }));
 }
+// 「2~4F、6F」のような書き方から階の番号を全部取り出す（~ は範囲、・や , は並び）
+function floorsIn(str) {
+  const out = new Set();
+  for (const m of str.matchAll(/(\d{1,2})(?:\s*[～~〜\u0303\u02dc\-]\s*(\d{1,2}))?\s*(?:[F階]|(?=\s*[・,、]\s*\d))/gi)) {
+    const a = +m[1], b = m[2] ? +m[2] : a;
+    if (a >= 1 && b >= a && b <= 60) for (let n = a; n <= b; n++) out.add(n);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+// そのページのキープランの題名（「5~7F キープラン」）をさがす。返すのは [{ floors:[5,6,7], x, y }]（x,y は題名の場所。分からなければ null）
+function keyPlanTitles(pg) {
+  let out = [];
+  for (const t of pg.items) {
+    const at = t.s.indexOf('キープラン'); if (at < 0) continue;
+    // 階が別の文字のかたまりになっていることがあるので、同じ行の左側もつなげて読む
+    const left = pg.items.filter(u => u !== t && Math.abs(u.y - t.y) < t.h * 0.6 && u.x < t.x && t.x - (u.x + u.w) < t.h * 12).sort((a, b) => a.x - b.x).map(u => u.s).join(' ');
+    const fl = floorsIn(left + ' ' + t.s.slice(0, at));
+    if (fl.length) out.push({ floors: fl, x: t.x + t.w / 2, y: -t.y - t.h / 2 });
+  }
+  if (!out.length) { // 読み取った文字（スキャン・写真）は場所があいまいなので、ページの文章からさがす
+    const txt = (pg.text || '').normalize('NFKC');
+    for (const m of txt.matchAll(/([0-9FＦ階～~〜\u0303\u02dc\-・,、\s]{2,30})キ[ー-]?\s*プラン/gi)) { const fl = floorsIn(m[1]); if (fl.length) out.push({ floors: fl, x: null, y: null }); }
+  }
+  // 同じ階の題名（図の下と表題欄の両方に書いてある）は1つに。ほかの題名を全部ふくむもの（表題欄の「2~7F」など）は外す
+  const key = t => t.floors.join(','), seen = new Set();
+  out = out.filter(t => !seen.has(key(t)) && seen.add(key(t)));
+  if (out.length > 1) out = out.filter(t => !out.some(q => q !== t && q.floors.length < t.floors.length && q.floors.every(f => t.floors.includes(f))));
+  return out;
+}
+const floorsText = fl => { // [2,3,4,6] → 「2〜4F・6F」
+  const parts = []; let a = null, b = null;
+  for (const n of fl) { if (b !== null && n === b + 1) b = n; else { if (a !== null) parts.push(a === b ? `${a}F` : `${a}〜${b}F`); a = b = n; } }
+  if (a !== null) parts.push(a === b ? `${a}F` : `${a}〜${b}F`);
+  return parts.join('・');
+};
 // そのページの「2～7F」「3F」のような書き方から階の範囲を推測する
 const FLOOR_RE = '(?<![A-Z0-9.])(\\d{1,2})(?:\\s*[～~〜̃˜\\-・,、]\\s*(\\d{1,2}))?\\s*[F階]';
 // 「4~9F 11~22F」「5~9F、22F」のように並んでいれば、一番下〜一番上にまとめる
@@ -932,7 +1008,8 @@ $('#findSym').onclick = async () => {
 function showSymResults(pages, ocr) {
   const d = S.drawing, msg = $('#symMsg'), list = $('#symList');
   list.innerHTML = ''; symPages = pages;
-  symFound = findSymbols(pages).map(s => ({ ...s, floors: guessFloors(pages[s.page - 1].text, s.name) }));
+  // 階：キープランに出ていればその階、なければ割り当てたページの書き方から推測
+  symFound = findSymbols(pages).map(s => ({ ...s, floors: s.kpFloors.length ? [s.kpFloors[0], s.kpFloors[s.kpFloors.length - 1]] : guessFloors(pages[s.page - 1].text, s.name) }));
   if (!symFound.length) {
     msg.textContent = ocr ? '読み取った文字の中に符号が見つかりませんでした。符号の辺りをもっと拡大して「今見えている範囲を読む」を試すか、「＋ 位置」で追加してください。' : '符号が見つかりませんでした。「＋ 位置」で追加してください。';
     if (ocr) $('#symOcr').hidden = false;
@@ -941,10 +1018,12 @@ function showSymResults(pages, ocr) {
   msg.textContent = `${symFound.length}個見つかりました。` + (ocr ? '読み取りは間違えることがあります。' : '') + '「見る」で図面の場所を確かめ、ページと階の範囲を直してから追加してください。';
   symFound.forEach((s, i) => {
     const exists = S.positions.some(p => p.name === s.name && p.drawingId === d.id);
-    const opts = pages.map(({ page: n }) => `<option value="${n}" ${n === s.page ? 'selected' : ''}>${n}${s.pages.includes(n) ? ' ●' : ''}</option>`).join('');
+    const isKp = n => s.kp.some(k => k.page === n);
+    const opts = pages.map(({ page: n }) => `<option value="${n}" ${n === s.page ? 'selected' : ''}>${n}${isKp(n) ? ' キープラン' : s.pages.includes(n) ? ' ●' : ''}</option>`).join('');
+    const kpNote = s.kp.length ? `<br><span class="kp">キープラン：${floorsText(s.kpFloors)}（${s.kp.map(k => k.page).join('・')}ページ）</span>` : '';
     const row = document.createElement('div'); row.className = 'symrow' + (exists ? ' done' : '');
     row.innerHTML = `<input type="checkbox" ${exists ? 'disabled' : 'checked'} data-i="${i}" id="sym${i}" aria-label="${esc(s.name)}を追加する">
-      <label for="sym${i}"><b>${esc(s.name)}</b><br><span class="meta">${exists ? '登録済み' : '出てくるページ：' + s.pages.join('・')}</span></label>
+      <label for="sym${i}"><b>${esc(s.name)}</b><br><span class="meta">${exists ? '登録済み' : '出てくるページ：' + s.pages.join('・')}${kpNote}</span></label>
       <button type="button" class="chip" data-v="${i}">見る</button>
       <span class="pg"><select data-p="${i}" aria-label="${esc(s.name)}のページ" ${exists ? 'disabled' : ''}>${opts}</select>ページ</span>
       <span class="fl"><input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[0]}" data-f="${i}" aria-label="${esc(s.name)}の開始階" ${exists ? 'disabled' : ''}>〜<input type="number" inputmode="numeric" min="1" max="99" value="${s.floors[1]}" data-t="${i}" aria-label="${esc(s.name)}の終了階" ${exists ? 'disabled' : ''}>F</span>`;
@@ -997,7 +1076,8 @@ $('#symList').addEventListener('change', e => {
   if (e.target.matches('input[type=checkbox]')) renderSymAll();
   // ページを変えたら、そのページの書き方から階を推測しなおす
   if (e.target.dataset.p) {
-    const i = +e.target.dataset.p, s = symFound[i], f = guessFloors(symPages[+e.target.value - 1].text, s.name);
+    const i = +e.target.dataset.p, s = symFound[i]; if (s.kpFloors.length) return; // キープランで階が分かっている時はそのまま
+    const f = guessFloors(symPages[+e.target.value - 1].text, s.name);
     $(`[data-f="${i}"]`).value = f[0]; $(`[data-t="${i}"]`).value = f[1];
   }
 });
@@ -1010,9 +1090,11 @@ $('#symAdd').onclick = async () => {
     const i = +cb.dataset.i, s = symFound[i];
     const a = parseInt($(`[data-f="${i}"]`).value) || 1, z = parseInt($(`[data-t="${i}"]`).value) || a;
     const page = parseInt($(`[data-p="${i}"]`).value) || s.page;
-    const floors = []; for (let f = Math.min(a, z); f <= Math.max(a, z); f++) floors.push(f + 'F');
+    let floors = []; for (let f = Math.min(a, z); f <= Math.max(a, z); f++) floors.push(f + 'F');
+    // キープランの階が飛び飛び（2〜4F・8〜10F など）で、範囲を直していなければ、その階だけにする
+    const kf = s.kpFloors; if (kf.length && a === kf[0] && z === kf[kf.length - 1]) floors = kf.map(f => f + 'F');
     const now = new Date().toISOString();
-    const p = { id: uid(), siteId: S.site.id, drawingId: S.drawing.id, page, name: s.name, color: COLORS[S.positions.length % COLORS.length], floors, points: [], values: {}, memo: '', foundPages: s.pages, createdAt: now, updatedAt: now };
+    const p = { id: uid(), siteId: S.site.id, drawingId: S.drawing.id, page, name: s.name, color: COLORS[S.positions.length % COLORS.length], floors, points: [], values: {}, memo: '', foundPages: s.pages, ...(s.kp.length ? { keyPlan: s.kp } : {}), createdAt: now, updatedAt: now };
     await Store.put('positions', p); S.positions.push(p); added++;
   }
   $('#symDlg').close();
@@ -1030,7 +1112,7 @@ async function symPreview(i, page) {
   $('#symPrevTitle').textContent = `${s.name}　${page}ページ`;
   const bs = s.boxes.get(page) || [];
   $('#symPrevNote').textContent = bs.length ? `赤丸が「${s.name}」の書いてある所です（${bs.length}か所）。指で動かして見られます。` : `このページには「${s.name}」の文字が見つかりませんでした。`;
-  $('#symPrevPages').innerHTML = s.pages.map(n => `<button type="button" class="chip${n === page ? ' on' : ''}" data-pp="${n}">${n}ページ</button>`).join('');
+  $('#symPrevPages').innerHTML = s.pages.map(n => `<button type="button" class="chip${n === page ? ' on' : ''}" data-pp="${n}">${n}ページ${s.kp.some(k => k.page === n) ? '（キープラン）' : ''}</button>`).join('');
   $('#symPrevUse').hidden = sel.disabled || +sel.value === page;
   const box = $('#symPrevBox'), c = $('#symPrevCv');
   c.getContext('2d').clearRect(0, 0, c.width, c.height);
