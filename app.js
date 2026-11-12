@@ -63,6 +63,11 @@ S.folder = null; // ホームで開いているフォルダ
 const isFolder = r => r?.kind === 'folder';
 const FOLDER_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5h3.6c.6 0 1.2.3 1.6.7L12 7h6.5A2.5 2.5 0 0 1 21 9.5v8a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5z"/></svg>';
 let homeCache = { folders: [], sites: [] };
+// フォルダと現場の一覧だけ読み直す（現場の画面からフォルダに入れる時に使う）
+async function renderHomeCache() {
+  const all = await Store.all('sites');
+  homeCache = { folders: all.filter(isFolder).sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true })), sites: all.filter(r => !isFolder(r)) };
+}
 async function renderHome() {
   const all = await Store.all('sites');
   const folders = all.filter(isFolder).sort((a, b) => a.name.localeCompare(b.name, 'ja', { numeric: true }));
@@ -201,7 +206,7 @@ async function doMove(fid) {
   await Store.put('sites', st);
   $('#moveDlg').close(); moving = null;
   toast(fid ? `「${homeCache.folders.find(f => f.id === fid)?.name}」に入れました` : 'フォルダから出しました');
-  renderHome();
+  if (!$('#vHome').hidden) renderHome();
 }
 $('#moveNew').onclick = async () => {
   const st = moving; $('#moveDlg').close();
@@ -232,27 +237,77 @@ $('#newSiteForm').onsubmit = async e => {
 };
 
 /* ---------- 現場 ---------- */
+// 実測の進み具合：位置ごとに「番号×階」のうち、実測値が入っている数
+function progressOf(p) {
+  let done = 0;
+  for (const f of p.floors) for (const pt of p.points) { const v = p.values?.[f]?.[pt.id]; if (v !== undefined && v !== null && String(v).trim() !== '') done++; }
+  return { done, total: p.floors.length * p.points.length };
+}
+const pct = (d, t) => t ? Math.round(d / t * 100) : 0;
+// えらぶメニュー：items = [{ label, note, danger, run }]
+function menu(title, items) {
+  $('#menuTitle').textContent = title;
+  const box = $('#menuList'); box.innerHTML = '';
+  items.forEach(it => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'moveopt' + (it.danger ? ' danger' : '');
+    b.innerHTML = `<span>${esc(it.label)}</span>` + (it.note ? `<small>${esc(it.note)}</small>` : '');
+    b.onclick = () => { $('#menuDlg').close(); it.run(); };
+    box.append(b);
+  });
+  $('#menuDlg').showModal();
+}
+$('#menuCancel').onclick = () => $('#menuDlg').close();
 async function renderSite() {
   $('#siteTitle').textContent = S.site.name;
   const ul = $('#drawList'); ul.innerHTML = '';
   const poss = await Store.byIndex('positions', 'site', S.site.id);
+  let allDone = 0, allTotal = 0, allPts = 0;
   S.site.drawings.forEach(d => {
     const li = document.createElement('li'), b = document.createElement('button');
-    b.type = 'button'; b.textContent = d.name;
+    li.className = 'siteli';
     const n = poss.filter(p => p.drawingId === d.id).sort(posOrder);
-    const sp = document.createElement('span');
-    sp.textContent = `${d.pages}ページ` + (n.length ? `・${n.map(p => p.name).join(' ')}` : '');
-    b.append(sp);
+    let done = 0, total = 0;
+    const chips = n.map(p => {
+      const g = progressOf(p); done += g.done; total += g.total; allPts += p.points.length;
+      const st = !g.total ? '' : g.done >= g.total ? ' full' : g.done ? ' part' : '';
+      return `<span class="pchip${st}">${esc(p.name)}${g.total ? `<i>${g.done}/${g.total}</i>` : ''}</span>`;
+    }).join('');
+    allDone += done; allTotal += total;
+    b.type = 'button'; b.className = 'sitecard drawcard';
+    b.innerHTML = `<i class="dico">${d.type === 'pdf' ? 'PDF' : '写真'}</i>
+      <span class="sbody"><b>${esc(d.name)}</b>
+        <span class="meta"><span>${d.pages}ページ</span><span>位置 ${n.length}</span>${total ? `<span>実測 ${done}/${total}（${pct(done, total)}%）</span>` : ''}</span>
+        ${total ? `<span class="bar"><i style="width:${pct(done, total)}%"></i></span>` : ''}
+        ${chips ? `<span class="pchips">${chips}</span>` : '<span class="peek">まだ位置がありません。開いて「＋ 位置」か「図面から符号をさがす」で追加します。</span>'}
+      </span>`;
     b.onclick = () => { S.drawing = d; S.page = d.lastPage || 1; S.pos = null; go('draw'); };
-    b.className = 'open';
-    const del = document.createElement('button');
-    del.type = 'button'; del.className = 'del danger'; del.textContent = '削除'; del.setAttribute('aria-label', `${d.name} を削除`);
-    del.onclick = () => delDrawing(d, n);
-    li.append(b, del); ul.append(li);
+    const more = document.createElement('button');
+    more.type = 'button'; more.className = 'more'; more.textContent = '…'; more.setAttribute('aria-label', `${d.name} のメニュー（名前を変える・削除）`);
+    more.onclick = () => menu(d.name, [
+      { label: '名前を変える', run: async () => {
+        const name = await askName('図面の名前を変える', d.name); if (!name || name === d.name) return;
+        d.name = name; await saveSite(); renderSite(); toast('名前を変えました');
+      } },
+      { label: 'この図面を削除', danger: true, run: () => delDrawing(d, n) },
+    ]);
+    li.append(b, more); ul.append(li);
   });
   $('#siteEmpty').hidden = S.site.drawings.length > 0;
   $('#xlsxBox').hidden = !poss.some(p => p.points.length);
+  $('#siteSum').hidden = !S.site.drawings.length;
+  $('#sumDraw').textContent = S.site.drawings.length; $('#sumPos').textContent = poss.length; $('#sumPts').textContent = allPts;
+  $('#sumProgText').textContent = allTotal ? `${allDone} / ${allTotal} か所（${pct(allDone, allTotal)}%）` : '番号を打つと出ます';
+  $('#sumProgBar').style.width = pct(allDone, allTotal) + '%';
+  $('#sumProgBar').classList.toggle('full', !!allTotal && allDone >= allTotal);
 }
+$('#siteMenu').onclick = () => menu(S.site.name, [
+  { label: '現場の名前を変える', run: async () => {
+    const name = await askName('現場の名前を変える', S.site.name); if (!name || name === S.site.name) return;
+    S.site.name = name; await saveSite(); renderSite(); toast('名前を変えました');
+  } },
+  { label: 'フォルダに入れる・移す', run: async () => { await renderHomeCache(); moveSite(S.site); } },
+  { label: 'この現場を削除', danger: true, run: delSite },
+]);
 // 図面を1枚だけ消す（その図面の符号・実測値・写真もいっしょに）
 async function delDrawing(d, poss) {
   const extra = poss.length ? `符号${poss.length}個と、その実測値・写真もいっしょに消えます。` : '';
@@ -292,14 +347,14 @@ $('#fileIn').onchange = $('#photoIn').onchange = async e => {
     msg.textContent = '読み込めませんでした：' + (err.message || err);
   }
 };
-$('#delSite').onclick = async () => {
+async function delSite() {
   if (!await ask(`「${S.site.name}」の図面と実測値をすべて削除します。元に戻せません。`)) return;
   for (const d of S.site.drawings) await Store.del('files', d.id);
   for (const p of await Store.byIndex('positions', 'site', S.site.id)) await Store.del('positions', p.id);
   for (const ph of await Store.byIndex('photos', 'site', S.site.id)) await Store.del('photos', ph.id);
   await Store.del('sites', S.site.id);
   toast('削除しました'); history.back();
-};
+}
 
 /* ---------- 図面の表示 ---------- */
 const cv = $('#cv'), svg = $('#marks'), layer = $('#layer'), stage = $('#stage');
@@ -1009,6 +1064,21 @@ $('#symPrevUse').onclick = () => {
   symPrevClose();
 };
 $('#symPrevBack').onclick = symPrevClose;
+$('#posRename').onclick = async () => {
+  const p = S.pos; if (!p) return;
+  const name = await askName('位置の名前を変える', p.name);
+  if (!name || name === p.name) return;
+  if (S.positions.some(x => x !== p && x.name === name)) { toast(`「${name}」はもうあります`); return; }
+  p.name = name; p.updatedAt = new Date().toISOString(); await Store.put('positions', p);
+  S.positions.sort(posOrder); renderChips(); renderPos(); toast('名前を変えました');
+};
+// 図面を画面いっぱいに広げる（表をしまう）。スマホで図面をじっくり見る・番号を打つ・書き込む時に
+function setWide(on) {
+  $('#vDraw').classList.toggle('wide', on);
+  const b = $('#wideBtn'); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  b.textContent = on ? '⤡ 表を出す' : '⤢ 図面を広げる';
+}
+$('#wideBtn').onclick = () => setWide(!$('#vDraw').classList.contains('wide'));
 $('#delPos').onclick = async () => {
   if (!S.pos || !await ask(`位置「${S.pos.name}」の番号と実測値を削除します。元に戻せません。`)) return;
   clearTimeout(saveTimer); saveTimer = null;

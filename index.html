@@ -94,18 +94,31 @@
     </div>
     <footer class="homefoot">
       <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-      <p class="note small">アプリの版：<span id="appVer">v57</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
+      <p class="note small">アプリの版：<span id="appVer">v58</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
     </footer>
   </main>
 </section>
 
 <!-- 現場：図面一覧 -->
-<section id="vSite" class="view" hidden>
+<section id="vSite" class="view siteview" hidden>
   <header class="top">
     <button class="back" data-go="home" type="button" aria-label="戻る">‹</button>
     <h1 id="siteTitle"></h1>
+    <button id="siteMenu" type="button" class="sm" aria-label="現場のメニュー（名前を変える・フォルダ・削除）">…</button>
   </header>
-  <main class="pad stack">
+  <main class="homemain">
+    <!-- 現場のまとめ：図面・位置の数と、実測の進み具合 -->
+    <section id="siteSum" class="newsite sitesum">
+      <div class="sumnums">
+        <div><b id="sumDraw">0</b><span>図面</span></div>
+        <div><b id="sumPos">0</b><span>位置</span></div>
+        <div><b id="sumPts">0</b><span>番号</span></div>
+      </div>
+      <div class="sumprog">
+        <div class="row"><span class="small muted">実測の進み具合</span><span class="grow"></span><b id="sumProgText" class="small"></b></div>
+        <div class="bar"><i id="sumProgBar"></i></div>
+      </div>
+    </section>
     <div class="row wrap">
       <label class="primary filebtn" for="fileIn">＋ PDFを追加（ドライブ・ファイル）</label>
       <label class="filebtn" for="photoIn">＋ 写真を追加</label>
@@ -114,14 +127,11 @@
     <input id="photoIn" type="file" accept="image/*" hidden>
     <p class="note small">PDFは、開いた画面で「ドライブ」や「Google ドライブ」を選ぶと、ドライブの中の施工図を選べます。</p>
     <p id="loadMsg" class="note" hidden></p>
-    <ul id="drawList" class="list"></ul>
+    <ul id="drawList" class="sitegrid drawgrid"></ul>
     <p id="siteEmpty" class="note" hidden>図面がまだありません。施工図のPDFか、図面を撮った写真を追加してください。</p>
-    <div id="xlsxBox" class="stack" hidden>
+    <div id="xlsxBox" class="card stack xlsxbox" hidden>
       <button id="xlsxBtn" type="button" class="primary">Excelで保存（実測値記入表）</button>
       <p class="note small">符号ごとの実測値の表、番号入りの図面、現場写真、集計（中間値・最大・最小・差。差が20mm以上は赤字）を1つのExcelにまとめます。ドライブとつながっていれば「ピタ測データ ＞ Excel出力」に、つながっていなければスマホの「ダウンロード」に保存します。</p>
-    </div>
-    <div class="dangerzone">
-      <button id="delSite" class="danger" type="button">この現場を削除</button>
     </div>
   </main>
 </section>
@@ -163,6 +173,7 @@
         <button id="modeBtn" type="button" class="tool on" aria-pressed="true">● 番号を打つ</button>
         <button id="undoBtn" type="button" class="tool">↶ 取り消し</button>
         <button id="fitBtn" type="button" class="tool">全体</button>
+        <button id="wideBtn" type="button" class="tool" aria-pressed="false">⤢ 図面を広げる</button>
         <button id="sizeBtn" type="button" class="tool">丸：中</button>
       </div>
     </div>
@@ -172,6 +183,7 @@
       <div id="posBody" hidden>
         <div class="poshead">
           <strong id="posName"></strong>
+          <button id="posRename" type="button" class="sm ghost" aria-label="位置の名前を変える">✎</button>
           <span id="posMeta" class="small muted"></span>
           <span class="grow"></span>
           <span id="saveState" class="small muted"></span>
@@ -232,6 +244,15 @@
       <button value="cancel" formnovalidate>やめる</button>
     </div>
   </form>
+</dialog>
+
+<!-- えらぶメニュー（現場・図面の「…」） -->
+<dialog id="menuDlg">
+  <div class="stack">
+    <h2 id="menuTitle"></h2>
+    <div id="menuList" class="movelist"></div>
+    <button type="button" id="menuCancel">やめる</button>
+  </div>
 </dialog>
 
 <!-- 現場をフォルダに入れる・出す -->

@@ -274,3 +274,34 @@ dialog label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var
 @media (max-width:560px){.newsiteform{flex-wrap:wrap}.newsiteform input{flex:1 1 100%}.newsiteform button{flex:1 1 0}}
 .memolabel{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:6px 0 -6px;font-size:14px;font-weight:800;color:var(--ink)}
 .memolabel small{font-size:12px;font-weight:400;color:var(--muted)}
+
+/* ===== 現場の画面 ===== */
+.siteview .top h1{flex:1}
+.sitesum{align-items:center}
+.sumnums{display:flex;gap:22px}
+.sumnums div{display:flex;flex-direction:column;align-items:center;min-width:52px}
+.sumnums b{font:800 26px/1.1 var(--f-num);color:var(--accent)}
+.sumnums span{font-size:12px;color:var(--muted)}
+.sumprog{flex:1 1 300px;max-width:560px;display:flex;flex-direction:column;gap:6px}
+.bar{display:block;height:8px;border-radius:999px;background:var(--grid);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:999px;background:var(--accent);transition:width .3s}
+.bar i.full{background:#3aa861}
+.drawgrid{grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+.drawcard{align-items:flex-start}
+.drawcard .sbody{gap:7px}
+.drawcard b{white-space:normal;overflow-wrap:anywhere}
+.dico{flex:0 0 auto;width:48px;height:48px;border-radius:14px;display:grid;place-items:center;font:800 13px var(--f-num);font-style:normal;color:var(--accent);background:var(--accentsoft)}
+.pchips{display:flex;flex-wrap:wrap;gap:5px}
+.pchip{display:inline-flex;align-items:center;gap:5px;font:800 12px var(--f-num);border-radius:8px;padding:2px 8px;background:var(--surface2);border:1px solid var(--line);color:var(--ink)}
+.pchip i{font-style:normal;font-weight:700;color:var(--muted)}
+.pchip.part{border-color:color-mix(in srgb,var(--sun) 60%,transparent);background:color-mix(in srgb,var(--sun) 14%,var(--surface))}
+.pchip.full{border-color:color-mix(in srgb,#3aa861 55%,transparent);background:color-mix(in srgb,#3aa861 13%,var(--surface))}
+.pchip.full i{color:#2f8a50}
+.drawcard+.more{top:34px}
+.xlsxbox{margin-top:6px;border-radius:18px}
+.moveopt.danger{color:var(--red)}
+button.ghost{border:0;background:transparent;box-shadow:none;color:var(--muted);min-height:34px;padding:2px 8px;font-size:16px}
+/* 図面を広げる：表をしまって、図面を画面いっぱいに */
+.drawview.wide .panel{display:none}
+.drawview.wide .stagecol{flex:1 1 100%}
+#wideBtn.on{background:var(--accent);color:#fff}
