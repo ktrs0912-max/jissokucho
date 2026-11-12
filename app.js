@@ -1259,6 +1259,56 @@ $('#addFloor').onclick = () => {
   let n = nums.length ? Math.max(...nums) + 1 : 1; while (p.floors.includes(n + 'F')) n++;
   p.floors.push(n + 'F'); renderGrid(); scheduleSave();
 };
+/* ---------- 階の範囲をまとめて直す（例：2F〜9F を 3F〜12F に） ----------
+   範囲の中の行はそのまま（「5F-ア」のような箇所の行も）、足りない階は足し、範囲の外の階は消す。
+   数字で始まらない名前の行（「屋上」など）は触らない。 */
+const floorNo = f => { const n = parseInt(f); return Number.isFinite(n) ? n : null; };
+const rowHasData = (p, f) => Object.values(p.values?.[f] || {}).some(v => v !== undefined && v !== null && String(v).trim() !== '') || S.photos.some(ph => ph.floor === f);
+function rangePlan(p, a, z) {
+  const lo = Math.min(a, z), hi = Math.max(a, z);
+  const out = p.floors.filter(f => { const n = floorNo(f); return n !== null && (n < lo || n > hi); });
+  const have = new Set(p.floors.map(floorNo));
+  const add = []; for (let n = lo; n <= hi; n++) if (!have.has(n)) add.push(n + 'F');
+  return { lo, hi, out, add, lose: out.filter(f => rowHasData(p, f)) };
+}
+function rangeNote() {
+  const a = parseInt($('#rangeFrom').value), z = parseInt($('#rangeTo').value), el = $('#rangeNote');
+  if (!a || !z) { el.textContent = ''; return; }
+  const g = rangePlan(S.pos, a, z), parts = [];
+  if (g.add.length) parts.push(`${g.add.length}階ぶん足します`);
+  if (g.out.length) parts.push(`${g.out.length}行（${g.out.slice(0, 4).join('・')}${g.out.length > 4 ? ' ほか' : ''}）を消します`);
+  el.textContent = parts.length ? parts.join('。') + '。' : '今と同じ範囲です。';
+  el.classList.toggle('err', g.lose.length > 0);
+  if (g.lose.length) el.textContent += `消す行のうち ${g.lose.join('・')} には実測値や写真が入っています。`;
+}
+$('#rangeFrom').oninput = $('#rangeTo').oninput = rangeNote;
+$('#rangeBtn').onclick = () => {
+  const p = S.pos; if (!p) return;
+  const nums = p.floors.map(floorNo).filter(n => n !== null);
+  $('#rangeTitle').textContent = `「${p.name}」の階の範囲を直す`;
+  $('#rangeFrom').value = nums.length ? Math.min(...nums) : 1; $('#rangeTo').value = nums.length ? Math.max(...nums) : 1;
+  rangeNote(); $('#rangeDlg').showModal();
+};
+$('#rangeDlg form').onsubmit = async e => {
+  e.preventDefault(); $('#rangeDlg').close();
+  if (e.submitter?.value !== 'ok') return;
+  const p = S.pos, a = parseInt($('#rangeFrom').value), z = parseInt($('#rangeTo').value);
+  if (!a || !z) return;
+  const g = rangePlan(p, a, z);
+  if (!g.add.length && !g.out.length) return;
+  if (g.lose.length && !await ask(`${g.lose.join('・')} の実測値を消します（写真は「階なし」として残ります）。元に戻せません。`)) return;
+  for (const f of g.out) {
+    delete p.values[f];
+    for (const ph of S.photos.filter(x => x.floor === f)) { ph.floor = null; ph.updatedAt = new Date().toISOString(); await Store.put('photos', ph); }
+    if (S.selFloor === f) S.selFloor = null;
+  }
+  // 階の順に並べ直す（同じ階の箇所は今の順のまま、数字でない行は最後）
+  const keep = p.floors.filter(f => !g.out.includes(f)), all = [...keep, ...g.add];
+  const order = new Map(all.map((f, i) => [f, i]));
+  p.floors = all.sort((x, y) => (floorNo(x) ?? 1e9) - (floorNo(y) ?? 1e9) || order.get(x) - order.get(y));
+  renderGrid(); scheduleSave();
+  toast(`${g.lo}F〜${g.hi}F にしました`);
+};
 /* ---------- 表の行（階）のメニュー：同じ階に箇所を増やす・名前を変える・削除 ---------- */
 // 同じ階の箇所は「5F-ア」「5F-イ」…と名前を付けて、5F の行の下に並べる
 const KANA = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワ';

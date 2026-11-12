@@ -94,7 +94,7 @@
     </div>
     <footer class="homefoot">
       <p class="note small">データはこの端末の中に保存されます。ドライブとつなぐと、ほかの端末とも共有できます。</p>
-      <p class="note small">アプリの版：<span id="appVer">v58</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
+      <p class="note small">アプリの版：<span id="appVer">v59</span>　<a href="privacy.html">プライバシーポリシー</a>　<a href="intro.html">ピタ測の紹介</a></p>
     </footer>
   </main>
 </section>
@@ -203,6 +203,7 @@
           <span>「設計」に図面の寸法を入れると差が出ます（20mm以上は赤）</span>
         </div>
         <div class="row wrap">
+          <button id="rangeBtn" type="button">階の範囲を直す</button>
           <button id="addFloor" type="button">＋ 階</button>
           <button id="delFloor" type="button">− 階</button>
           <button id="copyBtn" type="button">Excel用にコピー</button>
@@ -241,6 +242,22 @@
     <input id="nameIn" type="text" autocomplete="off" aria-label="名前">
     <div class="row">
       <button value="ok" class="primary" id="nameOk">決める</button>
+      <button value="cancel" formnovalidate>やめる</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- 位置の階の範囲をまとめて直す -->
+<dialog id="rangeDlg">
+  <form method="dialog" class="stack">
+    <h2 id="rangeTitle">階の範囲を直す</h2>
+    <div class="row">
+      <label>開始階<input id="rangeFrom" type="number" inputmode="numeric" min="1" max="99" required></label>
+      <label>終了階<input id="rangeTo" type="number" inputmode="numeric" min="1" max="99" required></label>
+    </div>
+    <p id="rangeNote" class="note"></p>
+    <div class="row">
+      <button value="ok" class="primary">この範囲にする</button>
       <button value="cancel" formnovalidate>やめる</button>
     </div>
   </form>
