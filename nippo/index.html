@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#2f6fb5">
+<meta name="theme-color" content="#f5f6f9">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="製作日報">
 <link rel="manifest" href="manifest.webmanifest">
@@ -17,16 +17,27 @@
 <!-- ホーム：日付と作業員の一覧 -->
 <section id="vHome" class="view">
   <header class="top">
-    <h1>製作日報</h1>
+    <h1 class="brand"><img src="icon-192.png" alt="" width="36" height="36">製作日報</h1>
     <div class="datenav">
       <button id="dPrev" type="button" aria-label="前の日">‹</button>
-      <button id="dLabel" type="button" class="datelabel"></button>
+      <button id="dLabel" type="button" class="datelabel" aria-label="日付をえらぶ"></button>
+      <input id="dPick" type="date" class="dpick" tabindex="-1" aria-hidden="true">
       <button id="dNext" type="button" aria-label="次の日">›</button>
     </div>
     <button id="dToday" type="button" class="sm">今日</button>
   </header>
   <main class="pad">
-    <p class="lead">自分の名前をタップして、今日つくった物件をえらんでください。</p>
+    <div id="hero" class="hero">
+      <div class="herotext">
+        <p id="heroDay" class="eyebrow"></p>
+        <h2>自分の名前をタップ</h2>
+        <p class="herosub">つくった物件と工程をえらんで、保存します。</p>
+      </div>
+      <div id="prog" class="prog">
+        <p class="progtxt"><b id="progDone">0</b><span id="progAll"></span><span class="proglabel">入力済み</span></p>
+        <div class="progbar"><i id="progBar"></i></div>
+      </div>
+    </div>
     <div id="workerGrid" class="workers"></div>
     <p id="homeEmpty" class="note" hidden>作業員がまだいません。右下の「管理」から作業員と物件を登録してください。</p>
     <div id="forgot" class="card forgot" hidden>
@@ -35,7 +46,6 @@
     </div>
   </main>
   <footer class="foot">
-    <span id="homeCount" class="muted"></span>
     <button id="syncChip" type="button" class="syncchip" hidden></button>
     <button id="toAdmin" type="button" class="sm">管理</button>
   </footer>
@@ -57,15 +67,17 @@
       <span id="offBtns" class="offbtns"></span>
     </div>
     <p id="offNow" class="offnow" hidden></p>
-    <p class="hint">つくった物件をタップ（いくつでもえらべます）。下に出てくる欄で、その物件の工程（切断・溶接・塗装）を必ずえらんでください。</p>
-    <div id="projGrid" class="projects"></div>
-    <p id="projEmpty" class="note" hidden>物件が登録されていません。「管理」→「物件」で登録してください。</p>
-
     <div id="selBox" class="card" hidden>
       <h2>えらんだ物件 <small class="muted">工程は必ずえらんでください（いくつでも）。時間は分かれば入れてください（なくても保存できます）</small></h2>
       <ul id="selList" class="sellist"></ul>
-      <label class="notelabel">ひとこと（任意）<input id="entryNote" type="text" placeholder="例：溶接のみ、午後から応援 など"></label>
+      <label class="notelabel">ひとこと（任意）<input id="entryNote" type="text" placeholder="例：部品のみ、午後から応援 など"></label>
     </div>
+    <p class="hint">つくった物件をタップ（いくつでもえらべます）。えらぶと上に欄が出るので、その物件の工程（手配・切断・組み立てなど）を必ずえらんでください。</p>
+    <div id="projGrid" class="projects"></div>
+    <button id="projMore" type="button" class="more" hidden></button>
+    <p id="projNone" class="note" hidden>さがした文字に合う物件がありません。</p>
+    <p id="projEmpty" class="note" hidden>物件が登録されていません。「管理」→「物件」で登録してください。</p>
+
   </main>
   <footer class="foot entryfoot">
     <button id="entryClear" type="button" class="danger">この日の入力を消す</button>
@@ -124,6 +136,7 @@
         </div>
       </div>
       <div class="row wrap gap">
+        <input id="projSearch" type="search" placeholder="物件名・工事番号でさがす" class="grow">
         <label class="chk"><input id="showDone" type="checkbox"> 完了した物件も表示</label>
       </div>
       <ul id="projAdmin" class="alist"></ul>
@@ -171,6 +184,7 @@
         <h2>入れ忘れ <small class="muted">日曜以外で、だれかが作業を入れているのに入力がない日。日付をタップでその日の入力へ</small></h2>
         <div id="recForgot"></div>
       </div>
+      <p class="note">表のマスをタップすると、その人のその日の入力を直せます。</p>
       <div class="tablewrap"><table id="recTable" class="rec"></table></div>
     </div>
 
